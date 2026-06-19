@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>OpenCode — Setup Required</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: #0f0f10;
+      color: #ccc;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right)
+               env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+    .card {
+      max-width: 420px;
+      width: 100%;
+      padding: 36px 28px;
+      background: #18181a;
+      border: 1px solid #2a2a2c;
+      border-radius: 12px;
+      margin: 24px;
+    }
+    .icon { font-size: 40px; margin-bottom: 16px; }
+    h1 { font-size: 20px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+    p { font-size: 14px; line-height: 1.6; color: #888; margin-bottom: 20px; }
+    code {
+      display: block;
+      background: #0f0f10;
+      border: 1px solid #2a2a2c;
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-size: 13px;
+      font-family: ui-monospace, 'Cascadia Code', monospace;
+      color: #a8ff78;
+      word-break: break-all;
+      margin-bottom: 20px;
+    }
+    .step { margin-bottom: 12px; font-size: 13px; color: #666; }
+    .step strong { color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">⚙️</div>
+    <h1>Server Not Configured</h1>
+    <p>
+      This APK was built without a server URL. To use OpenCode, rebuild
+      the APK pointing at your self-hosted instance:
+    </p>
+    <code>OPENCODE_SERVER_URL=https://your-server.example.com pnpm build:android</code>
+    <div class="step"><strong>1.</strong> Deploy the OpenCode server (Docker or VPS)</div>
+    <div class="step"><strong>2.</strong> Set <strong>OPENCODE_SERVER_URL</strong> to its address</div>
+    <div class="step"><strong>3.</strong> Run <strong>pnpm build:android</strong> and rebuild the APK</div>
+    <div class="step"><strong>4.</strong> Open <strong>android/</strong> in Android Studio → Generate Signed APK</div>
+  </div>
+</body>
+</html>

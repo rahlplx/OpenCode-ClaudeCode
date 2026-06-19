@@ -1,21 +1,33 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Preserve source info for crash diagnostics
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# ── Capacitor bridge ──────────────────────────────────────────────────────────
+# Keep all Capacitor classes — the WebView JS bridge reflects into these
+-keep class com.getcapacitor.** { *; }
+-keep @com.getcapacitor.annotation.CapacitorPlugin public class * {
+    @com.getcapacitor.annotation.Permission *;
+    @com.getcapacitor.annotation.PluginMethod public *;
+}
+-keep public class * extends com.getcapacitor.Plugin { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# ── Cordova plugins ───────────────────────────────────────────────────────────
+-keep class org.apache.cordova.** { *; }
+-keep public class * extends org.apache.cordova.CordovaPlugin { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# ── App entry point ───────────────────────────────────────────────────────────
+-keep class com.opencode.claudecode.MainActivity { *; }
+
+# ── WebView JavaScript interface ──────────────────────────────────────────────
+# Any method annotated @JavascriptInterface must survive shrinking
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# ── AndroidX / support library ────────────────────────────────────────────────
+-keep class androidx.core.app.CoreComponentFactory { *; }
+-dontwarn androidx.**
+
+# ── Kotlin (transitive dep of Capacitor) ─────────────────────────────────────
+-dontwarn kotlin.**
+-keep class kotlin.Metadata { *; }
