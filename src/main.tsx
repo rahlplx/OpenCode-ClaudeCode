@@ -7,6 +7,12 @@ import { ThemeProvider } from "./client/hooks/useTheme"
 import "@xterm/xterm/css/xterm.css"
 import "./index.css"
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js");
+  });
+}
+
 const container = document.getElementById("root")
 
 if (!container) {

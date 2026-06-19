@@ -1,0 +1,18 @@
+services:
+  opencode:
+    build: .
+    ports:
+      - "4080:4080"
+    restart: unless-stopped
+    # Uncomment to require a password:
+    # command: ["node", "dist-cli/index.js", "serve", "--port", "4080", "--static-dir", "dist/", "--password", "your-password-here"]
+    #
+    # Persist any data OpenCode writes (if opencode binary is mounted):
+    # volumes:
+    #   - opencode-data:/root/.opencode
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4080/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
