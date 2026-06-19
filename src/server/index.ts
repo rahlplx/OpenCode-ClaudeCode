@@ -58,7 +58,7 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
     }
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:; font-src 'self'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: https://api.github.com; img-src 'self' data:; font-src 'self'",
     );
     next();
   });
