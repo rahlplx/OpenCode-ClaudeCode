@@ -2,7 +2,7 @@
 
 ```bash
 pnpm install              # Install dependencies
-pnpm dev                  # Vite dev server on :5173, proxies /api to bridge at :4080
+pnpm dev                  # Vite dev server on :5173, proxies /api+/ws+/auth+/health to bridge at :4080
 pnpm build                # tsc type-check + vite build → dist/
 pnpm build:cli            # tsup bundle → dist-cli/ (CLI entry with shebang)
 pnpm preview              # Serve production build locally
