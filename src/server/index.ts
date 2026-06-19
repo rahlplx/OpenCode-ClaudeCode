@@ -189,10 +189,13 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
   app.use(express.json({ limit: "32kb" }));
 
-  // Catch body-parser JSON syntax errors and return JSON instead of HTML
+  // Catch all body-parser errors (SyntaxError, 413 Payload Too Large, etc.) and return JSON
   app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (err instanceof SyntaxError && "body" in err) {
-      res.status(400).json({ error: "Invalid JSON body" });
+    if (err) {
+      const error = err as { status?: number; statusCode?: number; message?: string };
+      const status = error.status || error.statusCode || 400;
+      const message = err instanceof SyntaxError && "body" in err ? "Invalid JSON body" : (error.message || "Invalid request");
+      res.status(status).json({ error: message });
       return;
     }
     next(err);
@@ -404,7 +407,8 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
   if (options.staticDir) {
     app.use(express.static(options.staticDir));
     app.get("*path", (req, res, next) => {
-      if (req.path.startsWith("/api") || req.path.startsWith("/auth") || req.path === "/health") {
+      const isApiOrAuth = req.path === "/api" || req.path.startsWith("/api/") || req.path === "/auth" || req.path.startsWith("/auth/");
+      if (isApiOrAuth || req.path === "/health") {
         next();
         return;
       }
@@ -414,7 +418,8 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
   // JSON 404 for unmatched API/auth routes — must come after all route definitions
   app.use((req, res) => {
-    if (req.path.startsWith("/api") || req.path.startsWith("/auth")) {
+    const isApiOrAuth = req.path === "/api" || req.path.startsWith("/api/") || req.path === "/auth" || req.path.startsWith("/auth/");
+    if (isApiOrAuth) {
       res.status(404).json({ error: "Not found", path: req.path });
     } else {
       res.status(404).send("Not found");
