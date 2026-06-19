@@ -41,6 +41,9 @@
     "react-resizable-panels": "^4.7.3",
     "zod": "^4.4.3"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
     "@tailwindcss/postcss": "^4.1.18",
