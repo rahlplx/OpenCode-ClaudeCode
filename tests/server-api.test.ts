@@ -10,17 +10,14 @@ describe("server API contract", () => {
       expect(response.status).toBe("ok");
     });
 
-    it("returns provider status when authenticated", () => {
-      const cb = new CircuitBreaker({ failureThreshold: 3, resetTimeoutMs: 60000 });
-      const status = cb.getStatus();
+    it("returns version when authenticated without exposing provider details", () => {
       const response = {
         status: "ok",
         opencode: false,
-        providers: status,
         version: "0.1.0",
       };
       expect(response.status).toBe("ok");
-      expect(response).toHaveProperty("providers");
+      expect(response).not.toHaveProperty("providers");
       expect(response).toHaveProperty("version");
     });
   });

@@ -180,11 +180,20 @@ function handleCommand(client: KannaClient, id: string, command: ClientCommand):
     case "settings.readAppSettings":
       sendEnvelope(client.ws, { v: 1, type: "ack", id, result: defaultAppSettings });
       break;
-    case "settings.writeAppSettingsPatch":
-      Object.assign(defaultAppSettings, command.patch);
+    case "settings.writeAppSettingsPatch": {
+      const ALLOWED_PATCH_KEYS = new Set([
+        "theme", "chatSoundPreference", "chatSoundId", "terminal",
+        "editor", "defaultProvider", "providerDefaults", "analyticsEnabled",
+      ]);
+      const safePatch: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(command.patch as Record<string, unknown>)) {
+        if (ALLOWED_PATCH_KEYS.has(key)) safePatch[key] = value;
+      }
+      Object.assign(defaultAppSettings, safePatch);
       sendEnvelope(client.ws, { v: 1, type: "ack", id, result: defaultAppSettings });
-      broadcastToSubscribers("app-settings", { type: "app-settings", data: defaultAppSettings });
+      broadcastToSubscribers("app-settings", { type: "app-settings", data: defaultAppSettings }, client.userId);
       break;
+    }
     case "settings.readKeybindings":
       sendEnvelope(client.ws, { v: 1, type: "ack", id, result: defaultKeybindings });
       break;
@@ -239,8 +248,9 @@ function handleCommand(client: KannaClient, id: string, command: ClientCommand):
   }
 }
 
-function broadcastToSubscribers(topicType: string, snapshot: { type: string; data: unknown }): void {
+function broadcastToSubscribers(topicType: string, snapshot: { type: string; data: unknown }, senderUserId?: string): void {
   for (const client of clients.values()) {
+    if (senderUserId && client.userId !== senderUserId) continue;
     for (const [subId, sub] of client.subscriptions) {
       if (sub.topic.type === topicType) {
         sendEnvelope(client.ws, {

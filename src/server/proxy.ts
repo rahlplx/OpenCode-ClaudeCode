@@ -312,7 +312,7 @@ async function tryProvider(
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
-        "X-Provider": providerType,
+        "X-Served-By": "proxy",
       });
 
       const reader = upstreamRes.body.getReader();
@@ -323,10 +323,12 @@ async function tryProvider(
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
 
-        if (provider.wireApi === "chat") {
-          res.write(convertStreamChunkToResponses(chunk));
-        } else {
-          res.write(chunk);
+        const data = provider.wireApi === "chat"
+          ? convertStreamChunkToResponses(chunk)
+          : chunk;
+        const canContinue = res.write(data);
+        if (!canContinue) {
+          await new Promise<void>((resolve) => res.once("drain", resolve));
         }
       }
       res.end();
@@ -342,7 +344,7 @@ async function tryProvider(
 
       res.writeHead(200, {
         "Content-Type": "application/json",
-        "X-Provider": providerType,
+        "X-Served-By": "proxy",
       });
       res.end(JSON.stringify(result));
     }

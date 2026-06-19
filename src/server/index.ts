@@ -118,6 +118,19 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
     }
   }, RATE_LIMIT_WINDOW_MS);
 
+  const OWNERSHIP_MAX_AGE = 24 * 60 * 60 * 1000;
+  const ownershipTimestamps = new Map<string, number>();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, ts] of ownershipTimestamps) {
+      if (now - ts > OWNERSHIP_MAX_AGE) {
+        ownershipTimestamps.delete(id);
+        sessionOwnership.delete(id);
+        requestOwnership.delete(id);
+      }
+    }
+  }, 60 * 60 * 1000);
+
   const bridge = new OpenCodeBridge();
   const clientsByUser = new Map<string, Set<WebSocket>>();
   const sessionOwnership = new Map<string, string>();
@@ -223,7 +236,6 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
       res.json({
         status: "ok",
         opencode: bridge.isConnected(),
-        providers: circuitBreaker.getStatus(),
         version: process.env.npm_package_version || "0.1.0",
       });
     } else {
@@ -279,7 +291,10 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
         if (method === "session.create" && result && userId) {
           const sessionId = (result as Record<string, string>).id;
-          if (sessionId) sessionOwnership.set(sessionId, userId);
+          if (sessionId) {
+            sessionOwnership.set(sessionId, userId);
+            ownershipTimestamps.set(sessionId, Date.now());
+          }
         }
 
         if (method === "session.list" && userId) {
@@ -298,9 +313,11 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
         res.json({ jsonrpc: "2.0", id: 1, result });
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const internalMessage = err instanceof Error ? err.message : String(err);
+      console.error("RPC error:", internalMessage);
+      const safeMessage = "Internal server error";
       if (res.headersSent) {
-        res.write(`data: ${JSON.stringify({ type: "error", data: { message } })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "error", data: { message: safeMessage } })}\n\n`);
         res.end();
       } else {
         res.status(500).json({
@@ -308,7 +325,7 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
           id: 1,
           error: {
             code: -32603,
-            message,
+            message: safeMessage,
           },
         });
       }

@@ -221,12 +221,12 @@ describe("ProviderConfigManager", () => {
       expect(result.error).toBeNull();
     });
 
-    it("rejects URLs with non-https schemes", () => {
+    it("accepts external HTTP URLs", () => {
       const result = manager.validateLlmProvider({
         provider: "custom",
         apiKey: "sk-test",
         model: "gpt-4",
-        baseUrl: "http://localhost:8080/v1",
+        baseUrl: "http://api.example.com/v1",
       });
 
       expect(result.ok).toBe(true);
@@ -242,6 +242,87 @@ describe("ProviderConfigManager", () => {
 
       expect(result.ok).toBe(false);
       expect(result.error).toBeTruthy();
+    });
+  });
+
+  describe("SSRF protection", () => {
+    it("rejects localhost URLs", () => {
+      const result = manager.validateLlmProvider({
+        provider: "custom",
+        apiKey: "sk-test",
+        model: "gpt-4",
+        baseUrl: "http://localhost:8080/v1",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("internal");
+    });
+
+    it("rejects 127.0.0.1 URLs", () => {
+      const result = manager.validateLlmProvider({
+        provider: "custom",
+        apiKey: "sk-test",
+        model: "gpt-4",
+        baseUrl: "http://127.0.0.1:4096/v1",
+      });
+
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects private 10.x.x.x range", () => {
+      const result = manager.validateLlmProvider({
+        provider: "custom",
+        apiKey: "sk-test",
+        model: "gpt-4",
+        baseUrl: "http://10.0.0.1/v1",
+      });
+
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects AWS metadata endpoint", () => {
+      const result = manager.validateLlmProvider({
+        provider: "custom",
+        apiKey: "sk-test",
+        model: "gpt-4",
+        baseUrl: "http://169.254.169.254/latest/meta-data/",
+      });
+
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects 192.168.x.x range", () => {
+      const result = manager.validateLlmProvider({
+        provider: "custom",
+        apiKey: "sk-test",
+        model: "gpt-4",
+        baseUrl: "http://192.168.1.1/v1",
+      });
+
+      expect(result.ok).toBe(false);
+    });
+
+    it("blocks proxy entry for internal custom URLs", () => {
+      manager.writeLlmProvider({
+        provider: "custom",
+        apiKey: "sk-test",
+        model: "gpt-4",
+        baseUrl: "http://127.0.0.1:4096/v1",
+      });
+
+      const proxyEntry = manager.getProxyEntry("custom");
+      expect(proxyEntry).toBeNull();
+    });
+
+    it("accepts valid external HTTPS URLs", () => {
+      const result = manager.validateLlmProvider({
+        provider: "custom",
+        apiKey: "sk-test",
+        model: "gpt-4",
+        baseUrl: "https://api.openai.com/v1",
+      });
+
+      expect(result.ok).toBe(true);
     });
   });
 });

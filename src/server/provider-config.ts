@@ -4,6 +4,32 @@ import { getOpenRouterConfig } from "../providers/openrouter.js";
 
 type LlmProviderKind = "openai" | "openrouter" | "custom";
 
+const BLOCKED_IP_PATTERNS = [
+  /^127\./,
+  /^10\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^192\.168\./,
+  /^169\.254\./,
+  /^0\./,
+  /^localhost$/i,
+  /^\[::1\]$/,
+  /^\[fc/i,
+  /^\[fd/i,
+  /^\[fe80:/i,
+];
+
+function isBlockedUrl(urlString: string): boolean {
+  try {
+    const url = new URL(urlString);
+    const hostname = url.hostname;
+    if (BLOCKED_IP_PATTERNS.some((p) => p.test(hostname))) return true;
+    if (!["https:", "http:"].includes(url.protocol)) return true;
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 interface LlmProviderWrite {
   provider: LlmProviderKind;
   apiKey: string;
@@ -136,6 +162,10 @@ export class ProviderConfigManager {
       return { ok: false, error: "Invalid base URL format" };
     }
 
+    if (isBlockedUrl(config.baseUrl)) {
+      return { ok: false, error: "Base URL must not target internal or private networks" };
+    }
+
     return { ok: true, error: null };
   }
 
@@ -182,6 +212,7 @@ export class ProviderConfigManager {
       }
       case "custom": {
         if (!this.customApiKey || !this.customBaseUrl) return null;
+        if (isBlockedUrl(this.customBaseUrl)) return null;
         return {
           responsesUrl: `${this.customBaseUrl}/responses`,
           chatUrl: `${this.customBaseUrl}/chat/completions`,
