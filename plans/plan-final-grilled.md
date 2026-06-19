@@ -21,20 +21,75 @@ Stress-tested by 8 personas. Kanna (React + Zustand) as web UI, made responsive.
 ### What changes
 - **Delete**: `src/components/`, `src/composables/`, `src/router/`, `src/App.vue`, `src/main.ts`
 - **Keep**: `src/server/`, `src/providers/`, `src/cli/`, `src/types/`, `src/api/`
-- **Add**: Kanna React frontend (clone + adapt to our backend API)
-- **Replace deps**: vue, vue-router → react, react-dom, zustand, react-router, react-resizable-panels
+- **Add**: Kanna React frontend (clone `src/client/` + adapt to our backend API)
+- **Replace deps**: vue, vue-router → react 19, zustand 5, react-router 7, react-resizable-panels, @radix-ui/*, @xterm/xterm 6
 
 ### What stays the same
 - Express 5 bridge server (proxy.ts, bridge.ts, auth.ts, index.ts)
 - Provider proxy (Zen, OpenRouter, BYOK dynamic)
 - CLI entry point
-- WebSocket notifications
-- Build: Vite (supports React via @vitejs/plugin-react)
+- Build: Vite 6 (supports React via @vitejs/plugin-react)
 
 ### Why Kanna over Vue 3
 - Kanna already has: resizable panels, mobile sidebar drawer, terminal workspace, responsive breakpoints
 - Same framework = direct component/hook/store reuse
 - 2000 LOC Vue rewrite vs ongoing translation cost of every Kanna pattern
+- MIT licensed — safe to integrate
+
+### Kanna Integration Map (from deep source audit)
+
+**Kanna's architecture**: WebSocket subscription protocol (not HTTP-based JSON-RPC).
+
+```
+Kanna Frontend ←→ WebSocket (topics: sidebar, chat, terminal, settings)
+                   ├── subscribe → receive snapshots
+                   └── command → send actions (chat.send, project.open, etc.)
+```
+
+**Our backend**: HTTP JSON-RPC + WebSocket notifications.
+
+**Integration strategy**: Bridge adapter layer — translate between Kanna's WS protocol and our HTTP/WS API.
+
+| Kanna WS Topic | Our API Equivalent |
+|-----------------|-------------------|
+| `sidebar` (projects, chats) | `GET /api/rpc` → `session.list` |
+| `chat` (messages, turns) | `POST /api/rpc` → `session.chat` (streaming) |
+| `chat.send` command | `POST /api/rpc` → `session.chat` + SSE stream |
+| `chat.create` command | `POST /api/rpc` → `session.create` |
+| `app-settings` | `GET /api/providers`, `GET /api/models` |
+| `llm-provider.write` | `PUT /api/providers/:id/key` (BYOK) |
+| `terminal` | Future: OpenCode terminal bridge |
+
+**Two integration paths** (choosing Path A):
+
+**Path A — Extend Kanna's ProviderCatalog** (~500 LOC, lighter):
+- Add `"express-bridge"` as a new `LlmProviderKind`
+- AgentCoordinator routes to our Express proxy instead of local Claude/Codex SDKs
+- Kanna's WS server wraps our WebSocket notifications into its snapshot format
+- Reuse Kanna's event store, state management, UI completely
+
+**Path B — Replace AgentCoordinator** (~2000 LOC, cleaner but heavier):
+- New `ExternalApiCoordinator` that delegates all LLM calls to our Express bridge
+- Maps our response format to Kanna's `TranscriptEntry` type
+- More decoupled but more code
+
+**Server architecture after integration**:
+```
+Kanna Frontend (React)
+  ↕ WebSocket (Kanna protocol: subscribe/command/snapshot)
+Kanna WS Server (adapted)
+  ↕ HTTP + WS
+Our Express Bridge
+  ↕ JSON-RPC over HTTP
+OpenCode Process (port 4096)
+  ↕ Provider Proxy
+Zen / OpenRouter / BYOK providers
+```
+
+**Runtime note**: Kanna requires Bun >=1.3.5. Our CLI currently uses Node.js. Options:
+1. Run Kanna's server parts under Bun, our Express bridge under Node (two processes)
+2. Port Kanna's server to Node-compatible code (Bun PTY APIs → node-pty)
+3. Switch entirely to Bun (cleanest, Bun runs Node code)
 
 ---
 
@@ -387,28 +442,45 @@ Added via `@media (prefers-reduced-motion: reduce)` in style.css. Disables trans
 
 ## PART 6: Implementation Phases (Revised — Kanna Pivot)
 
-### Phase 0: Kanna Frontend Integration (3 days)
+### Phase 0: Kanna Frontend Integration (3-4 days)
 
-**Step 1 — Scaffold**:
-- Clone Kanna source into `src/client/` (React components, Zustand stores, styles)
+**Step 1 — Scaffold (Day 1)**:
+- Clone Kanna `src/client/` into our project (React components, Zustand stores, styles)
+- Clone Kanna `src/server/` selectively (WS router, event store, read models — NOT agent coordinator)
 - Remove Vue 3 frontend: `src/components/`, `src/composables/`, `src/router/`, `src/App.vue`, `src/main.ts`
-- Replace Vite Vue plugin with React plugin: `@vitejs/plugin-react`
-- Update `package.json`: swap vue deps → react, zustand, react-router, react-resizable-panels
+- Replace Vite Vue plugin with React: `@vitejs/plugin-react`
+- Update `package.json`: add react 19, zustand 5, react-router 7, @radix-ui/*, react-resizable-panels, react-markdown, @xterm/xterm 6, @dnd-kit/*
+- Remove: vue, vue-router, vue-tsc, @vitejs/plugin-vue
+- Update `tsconfig.json`: add `"jsx": "react-jsx"`
+- Update `index.html`: React mount point
 
-**Step 2 — Wire to backend**:
-- Point Kanna's LLM provider to our Express bridge (`/api/proxy/:provider/v1/responses`)
-- Map Kanna's WebSocket commands to our notification protocol
-- Wire Kanna's session management to our `/api/rpc` endpoints
-- Configure Kanna's `ProviderCatalog` to use our dynamic provider registry
+**Step 2 — Bridge Adapter (Day 2)**:
+- Create `src/server/kanna-adapter.ts` — translates between Kanna WS protocol and our Express API
+  - `subscribe("sidebar")` → calls `bridge.rpc("session.list")` → returns `SidebarData` snapshot
+  - `subscribe("chat")` → calls `bridge.rpc("session.get")` → returns `ChatSnapshot`
+  - `command("chat.send")` → calls `bridge.rpcStream("session.chat")` → broadcasts deltas as events
+  - `command("chat.create")` → calls `bridge.rpc("session.create")` → broadcasts snapshot update
+- Add `"express-bridge"` provider kind to Kanna's `LlmProviderKind`
+- Wire our Express bridge WebSocket notifications → Kanna snapshot broadcasts
+- Map our `Notification` type → Kanna `Event` envelope format
 
-**Step 3 — Responsive verification**:
-- Test Kanna's existing responsive patterns on 320px, 768px, 1024px, 1280px, 2560px
-- Fix any breakpoint issues for our backend API shape
-- Add reduced motion + safe-area-inset enhancements
+**Step 3 — Provider Integration (Day 3)**:
+- Extend Kanna's `ProviderCatalog` with our dynamic provider registry
+- Wire BYOK key management to Kanna's `llm-provider.write` command
+- Map our provider presets to Kanna's `LlmProviderSnapshot` format
+- Wire model listing from our `/api/models` → Kanna's model selector
+
+**Step 4 — Responsive Verification (Day 3-4)**:
+- Test on 320px (phone), 768px (tablet), 1024px (laptop), 1280px (desktop), 2560px (ultrawide)
+- Verify Kanna's mobile sidebar drawer works with our session data
+- Verify safe-area-insets, dvh, reduced motion
+- Fix any breakpoint issues
 
 **Files removed**: `src/components/`, `src/composables/`, `src/router/`, `src/App.vue`, `src/main.ts`, `src/style.css`
-**Files added**: `src/client/` (Kanna React source tree)
-**Files changed**: `package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`
+**Files added**: `src/client/` (Kanna React source), `src/server/kanna-adapter.ts`
+**Files changed**: `package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`, `src/server/index.ts`
+
+**Runtime decision**: Use Bun for full Kanna compatibility (Bun runs Node code, so our Express bridge works under Bun too). Update CLI from `node dist-cli/index.js` to `bun dist-cli/index.js`.
 
 ### Phase 1: LLM-Agnostic Provider Registry (2 days)
 
@@ -457,7 +529,7 @@ Added via `@media (prefers-reduced-motion: reduce)` in style.css. Disables trans
 - `tests/keys.test.ts` — BYOK encryption/decryption
 - `tests/providers.test.ts` — Provider registry, preset loading
 
-**Total effort**: ~12 days (added 3 days for Kanna integration in Phase 0)
+**Total effort**: ~12-13 days (3-4 days Kanna integration + 9 days backend/security/tests)
 
 ---
 
