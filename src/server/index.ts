@@ -3,7 +3,7 @@ import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { OpenCodeBridge } from "./bridge.js";
 import { handleProviderProxy } from "./proxy.js";
-import { handleLogin, requireAuth, generatePassword } from "./auth.js";
+import { handleLogin, requireAuth, generatePassword, getUserFromRequest, parseCookies, getUserIdFromToken, COOKIE_NAME } from "./auth.js";
 import { getZenConfig, buildZenHeaders, getZenModels } from "../providers/zen.js";
 import { getOpenRouterConfig, fetchFreeModels } from "../providers/openrouter.js";
 import type { ProviderType, Notification, Model } from "../types/index.js";
@@ -28,23 +28,52 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
   const wss = new WebSocketServer({ server, path: "/api/ws" });
 
   const bridge = new OpenCodeBridge();
-  const clients = new Set<WebSocket>();
+  const clientsByUser = new Map<string, Set<WebSocket>>();
+  const sessionOwnership = new Map<string, string>();
+  const requestOwnership = new Map<string, string>();
 
-  function broadcast(notification: Notification): void {
+  function broadcastToUser(userId: string, notification: Notification): void {
+    const userClients = clientsByUser.get(userId);
+    if (!userClients) return;
     const data = JSON.stringify(notification);
-    for (const client of clients) {
+    for (const client of userClients) {
       if (client.readyState === WebSocket.OPEN) {
         client.send(data);
       }
     }
   }
 
-  wss.on("connection", (ws) => {
-    clients.add(ws);
-    ws.send(JSON.stringify({ type: "connected", data: { ready: true } }));
+  function broadcastToAll(notification: Notification): void {
+    const data = JSON.stringify(notification);
+    for (const [, userClients] of clientsByUser) {
+      for (const client of userClients) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(data);
+        }
+      }
+    }
+  }
+
+  wss.on("connection", (ws, req) => {
+    const cookies = parseCookies(req.headers.cookie || "");
+    const token = cookies[COOKIE_NAME];
+    const userId = noPassword ? "default" : getUserIdFromToken(token);
+
+    if (!userId) {
+      ws.close(1008, "Unauthorized");
+      return;
+    }
+
+    if (!clientsByUser.has(userId)) clientsByUser.set(userId, new Set());
+    clientsByUser.get(userId)!.add(ws);
+
+    ws.send(JSON.stringify({ type: "connected", data: { ready: true, userId } }));
 
     ws.on("close", () => {
-      clients.delete(ws);
+      clientsByUser.get(userId)?.delete(ws);
+      if (clientsByUser.get(userId)?.size === 0) {
+        clientsByUser.delete(userId);
+      }
     });
   });
 
@@ -64,16 +93,22 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
     }
   });
 
-  app.get("/api/health", (_req, res) => {
-    res.json({
-      status: "ok",
-      opencode: bridge.isConnected(),
-      version: process.env.npm_package_version || "0.1.0",
-    });
+  app.get("/api/health", (req, res) => {
+    const userId = getUserFromRequest(req, noPassword);
+    if (userId) {
+      res.json({
+        status: "ok",
+        opencode: bridge.isConnected(),
+        version: process.env.npm_package_version || "0.1.0",
+      });
+    } else {
+      res.json({ status: "ok" });
+    }
   });
 
   app.post("/api/rpc", async (req, res) => {
     try {
+      const userId = getUserFromRequest(req, noPassword);
       const { method, params } = req.body as {
         method: string;
         params?: unknown;
@@ -85,16 +120,29 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
         res.setHeader("Connection", "keep-alive");
         res.flushHeaders();
 
+        const sessionId = (params as Record<string, string>)?.sessionId;
+
+        if (sessionId && userId) {
+          const owner = sessionOwnership.get(sessionId);
+          if (owner && owner !== userId) {
+            res.write(`data: ${JSON.stringify({ type: "error", data: { message: "Not your session" } })}\n\n`);
+            res.end();
+            return;
+          }
+        }
+
         const result = await bridge.rpcStream(
           method,
           params,
           (delta: unknown) => {
             res.write(`data: ${JSON.stringify({ type: "delta", data: delta })}\n\n`);
-            broadcast({
-              type: "message.delta",
-              data: delta,
-              sessionId: (params as Record<string, string>)?.sessionId,
-            });
+            if (userId) {
+              broadcastToUser(userId, {
+                type: "message.delta",
+                data: delta,
+                sessionId,
+              });
+            }
           },
         );
 
@@ -103,6 +151,25 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
         res.end();
       } else {
         const result = await bridge.rpc(method, params);
+
+        if (method === "session.create" && result && userId) {
+          const sessionId = (result as Record<string, string>).id;
+          if (sessionId) sessionOwnership.set(sessionId, userId);
+        }
+
+        if (method === "session.list" && userId) {
+          const sessions = result as Array<Record<string, unknown>> | undefined;
+          if (Array.isArray(sessions)) {
+            const filtered = sessions.filter((s) => {
+              const sid = s.id as string;
+              const owner = sessionOwnership.get(sid);
+              return !owner || owner === userId;
+            });
+            res.json({ jsonrpc: "2.0", id: 1, result: filtered });
+            return;
+          }
+        }
+
         res.json({ jsonrpc: "2.0", id: 1, result });
       }
     } catch (err) {
@@ -183,10 +250,18 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
   app.post("/api/server-requests/respond", async (req, res) => {
     try {
+      const userId = getUserFromRequest(req, noPassword);
       const { requestId, approved } = req.body as {
         requestId: string;
         approved: boolean;
       };
+
+      const owner = requestOwnership.get(requestId);
+      if (owner && userId && owner !== userId) {
+        res.status(403).json({ error: "Not your request" });
+        return;
+      }
+
       await bridge.respondToRequest(requestId, approved);
       res.json({ success: true });
     } catch (err) {
@@ -205,7 +280,25 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
   bridge.on("connected", () => {
     console.log("OpenCode backend connected");
-    bridge.connectWebSocket(broadcast);
+    bridge.connectWebSocket((notification) => {
+      if (notification.type === "tool.request" && notification.sessionId) {
+        const reqData = notification.data as Record<string, string> | undefined;
+        if (reqData?.id) {
+          const owner = sessionOwnership.get(notification.sessionId);
+          if (owner) requestOwnership.set(reqData.id, owner);
+        }
+      }
+
+      const sid = notification.sessionId;
+      if (sid) {
+        const owner = sessionOwnership.get(sid);
+        if (owner) {
+          broadcastToUser(owner, notification);
+          return;
+        }
+      }
+      broadcastToAll(notification);
+    });
   });
 
   bridge.on("error", (err: Error) => {

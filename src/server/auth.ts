@@ -1,11 +1,12 @@
 import { randomBytes, timingSafeEqual, createHash } from "crypto";
 import type { IncomingMessage, ServerResponse } from "http";
 
-const COOKIE_NAME = "occ_session_token";
+export const COOKIE_NAME = "occ_session_token";
 const SESSION_TTL = 24 * 60 * 60 * 1000;
 
 interface SessionEntry {
   token: string;
+  userId: string;
   createdAt: number;
 }
 
@@ -15,9 +16,9 @@ export function generatePassword(): string {
   return randomBytes(16).toString("hex");
 }
 
-export function createSession(): string {
+export function createSession(userId = "default"): string {
   const token = randomBytes(32).toString("hex");
-  activeSessions.set(token, { token, createdAt: Date.now() });
+  activeSessions.set(token, { token, userId, createdAt: Date.now() });
   return token;
 }
 
@@ -29,6 +30,33 @@ function isValidSession(token: string): boolean {
     return false;
   }
   return true;
+}
+
+export function getUserIdFromToken(token: string): string | null {
+  const session = activeSessions.get(token);
+  if (!session) return null;
+  if (Date.now() - session.createdAt > SESSION_TTL) {
+    activeSessions.delete(token);
+    return null;
+  }
+  return session.userId;
+}
+
+export function parseCookies(cookieHeader: string): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  for (const pair of cookieHeader.split(";")) {
+    const [key, ...valueParts] = pair.trim().split("=");
+    if (key) cookies[key] = valueParts.join("=");
+  }
+  return cookies;
+}
+
+export function getUserFromRequest(req: IncomingMessage, noPassword: boolean): string | null {
+  if (noPassword) return "default";
+  const cookies = parseCookies(req.headers.cookie || "");
+  const token = cookies[COOKIE_NAME];
+  if (!token) return null;
+  return getUserIdFromToken(token);
 }
 
 function constantTimeCompare(a: string, b: string): boolean {
@@ -106,13 +134,4 @@ export function requireAuth(
   res.writeHead(401, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: "Authentication required" }));
   return false;
-}
-
-function parseCookies(cookieHeader: string): Record<string, string> {
-  const cookies: Record<string, string> = {};
-  for (const pair of cookieHeader.split(";")) {
-    const [key, ...valueParts] = pair.trim().split("=");
-    if (key) cookies[key] = valueParts.join("=");
-  }
-  return cookies;
 }

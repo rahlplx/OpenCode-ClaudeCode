@@ -21,16 +21,14 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "latest",
+    "@opencode-ai/sdk": "^1.17.8",
     "commander": "^13.1.0",
     "express": "^5.1.0",
     "highlight.js": "^11.11.0",
     "markdown-it": "^14.1.0",
     "vue": "^3.5.13",
     "vue-router": "^4.6.0",
-    "ws": "^8.18.3",
-    "xterm": "^5.5.0",
-    "xterm-addon-fit": "^0.10.0"
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
