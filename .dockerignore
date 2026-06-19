@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-cli/
+.git/
+.claude/
+*.local
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+.vibe/

@@ -7,6 +7,19 @@ import { ThemeProvider } from "./client/hooks/useTheme"
 import "@xterm/xterm/css/xterm.css"
 import "./index.css"
 
+if ("serviceWorker" in navigator) {
+  const registerSW = () => {
+    navigator.serviceWorker.register("/sw.js").catch((err) => {
+      console.error("Service worker registration failed:", err);
+    });
+  };
+  if (document.readyState === "complete") {
+    registerSW();
+  } else {
+    window.addEventListener("load", registerSW);
+  }
+}
+
 const container = document.getElementById("root")
 
 if (!container) {
