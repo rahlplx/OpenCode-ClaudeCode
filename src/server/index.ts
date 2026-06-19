@@ -2,7 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { OpenCodeBridge } from "./bridge.js";
-import { handleProviderProxy, circuitBreaker } from "./proxy.js";
+import { handleProviderProxy } from "./proxy.js";
 import { handleLogin, requireAuth, generatePassword, getUserFromRequest, parseCookies, getUserIdFromToken, COOKIE_NAME } from "./auth.js";
 import { handleKannaConnection, providerConfigManager } from "./kanna-adapter.js";
 import { getZenModels } from "../providers/zen.js";

@@ -79,7 +79,7 @@ export class ChatSessionManager {
     return record ? record.userId === userId : false;
   }
 
-  addUserMessage(chatId: string, content: string, provider: AgentProvider, model: string): void {
+  addUserMessage(chatId: string, content: string, provider: AgentProvider, _model: string): void {
     const record = this.chats.get(chatId);
     if (!record) return;
 
