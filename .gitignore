@@ -6,3 +6,4 @@ dist-cli/
 .env.*
 !.env.example
 *.tsbuildinfo
+.vibe/
