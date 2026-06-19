@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-cli/
+*.local
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+.vibe/
