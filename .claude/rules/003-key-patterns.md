@@ -8,3 +8,5 @@
 - Zustand stores use `getState()` for cross-store reads (e.g., chat store reads sessions store)
 - Dynamic `import()` in server routes breaks after tsup bundling — use static imports
 - Check `res.headersSent` before setting status codes in streaming error handlers
+- Express 5 + path-to-regexp v8: wildcard routes must use named params — `app.get("*path", ...)` not `app.get("*", ...)` (bare `*` throws `PathError: Missing parameter name`)
+- pnpm blocks esbuild postinstall by default — add `"pnpm": { "onlyBuiltDependencies": ["esbuild"] }` to `package.json` so native binaries download on `pnpm install`
