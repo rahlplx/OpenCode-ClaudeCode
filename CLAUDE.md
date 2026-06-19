@@ -104,7 +104,7 @@ Legacy routes remain at `/api/auth/login`, `/api/auth/logout`.
 
 ## Test suite
 
-86 tests across 6 files:
+93 tests across 6 files:
 - `tests/auth.test.ts` — Session creation, token validation, cookie parsing
 - `tests/circuit-breaker.test.ts` — State machine, failover, reset behavior
 - `tests/proxy.test.ts` — Protocol translation (Responses ↔ Chat Completions)
