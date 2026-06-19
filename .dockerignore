@@ -3,6 +3,7 @@ dist/
 dist-cli/
 dist-electron/
 electron/
+android/
 .git/
 .claude/
 *.local

@@ -5,26 +5,30 @@ Current status and recommended approach for each platform:
 ## Already working
 - **Webapp** — React SPA served from `dist/` by the Express bridge
 - **Self-hosted (laptop/PC/VPS)** — `node dist-cli/index.js serve --port 4080 --static-dir dist/`
+- **Docker / VPS cloud** — `Dockerfile` + `docker-compose.yml`; multi-stage build, exposes port 4080
+- **PWA** — `public/sw.js` + `public/manifest.webmanifest`; installable from Chrome on Android, offline shell
+- **Windows EXE** — Electron (`pnpm build:win`); bundles bridge + Chromium, outputs portable + NSIS installer
+- **Android APK** — Capacitor (`pnpm build:android`); WebView wrapper, connects to remote OpenCode server via `OPENCODE_SERVER_URL`
 
 ## Planned
 
-### Docker / VPS cloud
-- Add `Dockerfile` (Node 18 slim, `COPY dist/ dist-cli/ package.json`, `CMD node dist-cli/index.js serve`)
-- Add `docker-compose.yml` for single-command local stack
-- Expose port 4080; reverse-proxy with nginx/Caddy for TLS
-
-### Windows EXE
-- **Electron** — bundles Node.js + Chromium; bridge runs in main process, UI in renderer window (~150 MB installer)
-- **Alternative**: `pkg` / `nexe` — packages just the CLI as `.exe`; user opens browser manually (~50 MB, no Chromium)
-- Electron preferred for end-user UX; pkg for server-operator CLI
-
-### Android APK
-- **PWA first** — add `public/manifest.json` + service-worker for offline shell; installable from Chrome on Android, no APK build required
-- **Capacitor** — wraps the built `dist/` as a native Android app; bridge must run on a reachable server (not on device)
-- Do PWA before Capacitor; Capacitor adds native plugins (camera, filesystem) if needed later
-
 ### iOS
-- Same Capacitor path as Android once PWA is proven
+- Same Capacitor path as Android: `npx cap add ios`, open in Xcode, build IPA
+- Requires macOS + Xcode; sign with Apple Developer account
+
+## Capacitor / Android notes
+- `capacitor.config.ts` — set `OPENCODE_SERVER_URL=https://your-server.com` at build time to point the APK at your instance
+- Without `OPENCODE_SERVER_URL`, the WebView loads local SPA assets but API calls need a server (use for testing only)
+- `pnpm build:android` = `pnpm build` + `cap sync android` — copies built SPA into `android/app/src/main/assets/public/`
+- Open `android/` in Android Studio → Build → Generate Signed Bundle/APK
+- `android/.gradle/`, `android/app/build/`, `android/build/` are gitignored; commit everything else
+
+## Electron notes
+- `asar: false` required — ESM `import()` fails inside ASAR archive
+- `pathToFileURL` for Windows drive-letter path safety
+- `shell.openExternal` validates `http:` or `https:` protocol only (RCE guard)
+- `getPath(...parts)` resolves relative to `__dirname/../` (works in both dev and packaged)
+- Health-poll loop before `createWindow()` — gives bridge up to 15s to start, retries every 300ms
 
 ## Pattern
-Serve the static SPA from any origin; the default bridge URL is set at build-time via env var `VITE_API_BASE` (Vite replaces it statically — not available at runtime in the browser). Runtime overrides are handled via query param `?server=https://...` read from `window.location.search`. This decouples the UI package from the server and enables one APK/EXE that connects to any self-hosted or cloud instance.
+The bridge (`startServer`) always runs on a server — either the user's machine (Electron/self-hosted) or a remote VPS (Docker/Capacitor). The SPA connects to it via relative paths (Electron/self-hosted) or the absolute `server.url` set in `capacitor.config.ts`. `VITE_API_BASE` is build-time only (Vite static replace); runtime server override is not yet implemented.

@@ -1,0 +1,21 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+// Set OPENCODE_SERVER_URL at build time to point the APK at your self-hosted instance.
+// Example: OPENCODE_SERVER_URL=https://opencode.example.com pnpm build:android
+const serverUrl = process.env.OPENCODE_SERVER_URL;
+
+const config: CapacitorConfig = {
+  appId: 'com.opencode.claudecode',
+  appName: 'OpenCode',
+  webDir: 'dist',
+  server: serverUrl
+    ? {
+        url: serverUrl,
+        cleartext: true, // Allow HTTP for local-network servers (http://)
+      }
+    : {
+        cleartext: true,
+      },
+};
+
+export default config;
