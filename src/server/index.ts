@@ -91,6 +91,13 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
     next();
   });
 
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of rateLimitMap) {
+      if (now > entry.resetAt) rateLimitMap.delete(ip);
+    }
+  }, RATE_LIMIT_WINDOW_MS);
+
   const bridge = new OpenCodeBridge();
   const clientsByUser = new Map<string, Set<WebSocket>>();
   const sessionOwnership = new Map<string, string>();

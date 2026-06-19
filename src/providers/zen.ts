@@ -1,8 +1,6 @@
 import type { ProviderConfig, Model } from "@/types";
 import { randomBytes } from "crypto";
 
-const ZEN_RESPONSES_URL = "https://opencode.ai/zen/v1/responses";
-const ZEN_CHAT_URL = "https://opencode.ai/zen/v1/chat/completions";
 const ZEN_PUBLIC_TOKEN = "zen-public-fallback";
 
 function generateId(prefix: string): string {
@@ -15,6 +13,8 @@ function generateId(prefix: string): string {
   }
   return id;
 }
+
+const zenSessionId = generateId("ses");
 
 export function getZenConfig(apiKey?: string): ProviderConfig {
   return {
@@ -32,24 +32,8 @@ export function buildZenHeaders(bearerToken: string): Record<string, string> {
     "User-Agent": "opencode-cli/1.15.9",
     "x-opencode-client": "cli",
     "x-opencode-request-id": generateId("msg"),
-    "x-opencode-session-id": generateId("ses"),
+    "x-opencode-session-id": zenSessionId,
   };
-}
-
-export async function proxyZenRequest(
-  body: unknown,
-  bearerToken: string,
-  wireApi: "responses" | "chat",
-  streaming: boolean,
-): Promise<Response> {
-  const url = wireApi === "responses" ? ZEN_RESPONSES_URL : ZEN_CHAT_URL;
-  const headers = buildZenHeaders(bearerToken || ZEN_PUBLIC_TOKEN);
-
-  return fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
 }
 
 export function getZenModels(): Model[] {

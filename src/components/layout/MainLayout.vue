@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { inject } from "vue";
-import type { ReturnType } from "vue";
+import type { useAgentState } from "@/composables/useAgentState";
 import Sidebar from "@/components/sidebar/Sidebar.vue";
 import ChatPanel from "@/components/chat/ChatPanel.vue";
 
-const state = inject("agentState") as ReturnType<
-  typeof import("@/composables/useAgentState").useAgentState
->;
+const state = inject("agentState") as ReturnType<typeof useAgentState>;
 </script>
 
 <template>

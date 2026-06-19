@@ -1,7 +1,5 @@
 import type { ProviderConfig, Model } from "@/types";
 
-const OPENROUTER_RESPONSES_URL = "https://openrouter.ai/api/v1/responses";
-const OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 
 const ALLOWED_TOOL_TYPES = new Set([
@@ -93,29 +91,3 @@ export async function fetchFreeModels(
   }
 }
 
-export async function proxyOpenRouterRequest(
-  body: Record<string, unknown>,
-  bearerToken: string,
-  wireApi: "responses" | "chat",
-  streaming: boolean,
-): Promise<Response> {
-  const url = wireApi === "responses" ? OPENROUTER_RESPONSES_URL : OPENROUTER_CHAT_URL;
-
-  if (body.tools) {
-    body.tools = sanitizeTools(
-      body.tools as Array<{ type: string; [k: string]: unknown }>,
-    );
-    if (!body.tools) delete body.tool_choice;
-  }
-
-  return fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${bearerToken}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://github.com/opencode-claudecode",
-      "X-Title": "OpenCode-ClaudeCode",
-    },
-    body: JSON.stringify(body),
-  });
-}

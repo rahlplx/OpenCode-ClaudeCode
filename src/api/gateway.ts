@@ -106,6 +106,9 @@ export const api = {
 
   async listModels(): Promise<Model[]> {
     const res = await fetch(`${BASE_URL}/models`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch models: ${res.statusText}`);
+    }
     const json = (await res.json()) as { models: Model[] };
     return json.models;
   },
@@ -114,11 +117,17 @@ export const api = {
     requestId: string,
     approved: boolean,
   ): Promise<void> {
-    await fetch(`${BASE_URL}/server-requests/respond`, {
+    const res = await fetch(`${BASE_URL}/server-requests/respond`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ requestId, approved }),
     });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(
+        (error as { error?: string }).error || "Failed to respond to request",
+      );
+    }
   },
 
   async login(password: string): Promise<boolean> {
@@ -147,17 +156,35 @@ export const api = {
     onNotification: (notification: Notification) => void,
   ): WebSocket {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
+    const url = `${protocol}//${window.location.host}/api/ws`;
+    let reconnectAttempt = 0;
 
-    ws.onmessage = (event) => {
-      try {
-        const notification = JSON.parse(event.data) as Notification;
-        onNotification(notification);
-      } catch {
-        // skip malformed messages
-      }
-    };
+    function connect(): WebSocket {
+      const ws = new WebSocket(url);
 
-    return ws;
+      ws.onmessage = (event) => {
+        try {
+          const notification = JSON.parse(event.data) as Notification;
+          onNotification(notification);
+        } catch {
+          // skip malformed messages
+        }
+      };
+
+      ws.onopen = () => {
+        reconnectAttempt = 0;
+      };
+
+      ws.onclose = () => {
+        const baseDelay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30_000);
+        const jitter = Math.random() * baseDelay * 0.3;
+        reconnectAttempt++;
+        setTimeout(connect, baseDelay + jitter);
+      };
+
+      return ws;
+    }
+
+    return connect();
   },
 };

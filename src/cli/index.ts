@@ -18,11 +18,12 @@ program
   .option("--opencode-path <path>", "Path to opencode binary")
   .option("--static-dir <path>", "Serve static files from directory")
   .action(async (opts) => {
+    const hasPassword = typeof opts.password === "string";
     await startServer({
       port: parseInt(opts.port, 10),
       host: opts.host,
-      password: opts.password,
-      noPassword: opts.noPassword ?? false,
+      password: hasPassword ? opts.password : undefined,
+      noPassword: !hasPassword,
       opencodePath: opts.opencodePath,
       staticDir: opts.staticDir,
     });
