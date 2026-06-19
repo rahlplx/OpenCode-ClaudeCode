@@ -133,7 +133,7 @@ const analyticsOptions = [
 ]
 
 const QUICK_RESPONSE_PROVIDER_OPTIONS: Array<{ value: LlmProviderKind; label: string }> = [
-  { value: "openai", label: "OpenAI" },
+  { value: "openai", label: "Zen (opencode.ai)" },
   { value: "openrouter", label: "OpenRouter" },
   { value: "custom", label: "Custom" },
 ]
@@ -1154,7 +1154,7 @@ export function SettingsPage() {
       ...llmProviderDraft,
       provider: nextProvider,
       model: nextProvider === "openai"
-        ? DEFAULT_OPENAI_SDK_MODEL
+        ? "anthropic/claude-sonnet-4-6"
         : nextProvider === "openrouter"
           ? DEFAULT_OPENROUTER_SDK_MODEL
           : llmProviderDraft.model,
@@ -1739,7 +1739,7 @@ export function SettingsPage() {
                           onChange={(event) => setLlmProviderDraft((current) => ({ ...current, apiKey: event.target.value }))}
                           onBlur={() => void commitLlmProvider()}
                           onKeyDown={(event) => handleTextInputKeyDown(event, () => void commitLlmProvider())}
-                          placeholder="API key"
+                          placeholder={llmProviderDraft.provider === "openai" ? "Zen API key from opencode.ai (optional)" : "API key"}
                         />
                         <Input
                           value={llmProviderDraft.model}

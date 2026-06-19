@@ -1,4 +1,6 @@
 import { WebSocket } from "ws";
+import { mkdirSync } from "fs";
+import { homedir } from "os";
 import type { IncomingMessage } from "http";
 import type {
   ClientEnvelope,
@@ -96,6 +98,10 @@ const defaultLocalProjects: LocalProjectsSnapshot = {
   },
   projects: [],
 };
+
+function resolveTilde(p: string): string {
+  return p.startsWith("~/") ? p.replace("~", homedir()) : p;
+}
 
 function sendEnvelope(ws: WebSocket, envelope: ServerEnvelope): void {
   if (ws.readyState === WebSocket.OPEN) {
@@ -310,6 +316,52 @@ function handleCommand(client: KannaClient, id: string, command: ClientCommand):
     case "chat.fork":
       sendEnvelope(client.ws, { v: 1, type: "ack", id });
       break;
+    case "project.create": {
+      const cmd = command as unknown as { type: string; localPath: string; title: string };
+      const resolvedPath = resolveTilde(cmd.localPath);
+      try {
+        mkdirSync(resolvedPath, { recursive: true });
+      } catch (err) {
+        sendEnvelope(client.ws, {
+          v: 1, type: "error", id,
+          message: `Failed to create directory: ${err instanceof Error ? err.message : String(err)}`,
+        });
+        break;
+      }
+      const existing = defaultLocalProjects.projects.find((p) => p.localPath === resolvedPath);
+      if (!existing) {
+        defaultLocalProjects.projects.unshift({
+          localPath: resolvedPath,
+          title: cmd.title || resolvedPath.split("/").pop() || resolvedPath,
+          source: "saved",
+          lastOpenedAt: Date.now(),
+          chatCount: 0,
+        });
+        broadcastToSubscribers("local-projects", { type: "local-projects", data: defaultLocalProjects });
+      }
+      sendEnvelope(client.ws, { v: 1, type: "ack", id, result: { projectId: resolvedPath } });
+      break;
+    }
+    case "project.open": {
+      const cmd = command as unknown as { type: string; localPath: string };
+      const resolvedPath = resolveTilde(cmd.localPath);
+      let project = defaultLocalProjects.projects.find((p) => p.localPath === resolvedPath);
+      if (!project) {
+        project = {
+          localPath: resolvedPath,
+          title: resolvedPath.split("/").pop() || resolvedPath,
+          source: "discovered",
+          lastOpenedAt: Date.now(),
+          chatCount: 0,
+        };
+        defaultLocalProjects.projects.unshift(project);
+        broadcastToSubscribers("local-projects", { type: "local-projects", data: defaultLocalProjects });
+      } else {
+        project.lastOpenedAt = Date.now();
+      }
+      sendEnvelope(client.ws, { v: 1, type: "ack", id, result: { projectId: resolvedPath } });
+      break;
+    }
     default:
       sendEnvelope(client.ws, {
         v: 1,

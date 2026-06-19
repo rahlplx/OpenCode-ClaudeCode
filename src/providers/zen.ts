@@ -2,6 +2,7 @@ import type { ProviderConfig, Model } from "@/types";
 import { randomBytes } from "crypto";
 
 const ZEN_PUBLIC_TOKEN = "zen-public-fallback";
+const ZEN_BASE_URL = process.env.ZEN_BASE_URL || "https://opencode.ai/zen/v1";
 
 function generateId(prefix: string): string {
   const alphabet =
@@ -19,8 +20,8 @@ const zenSessionId = generateId("ses");
 export function getZenConfig(apiKey?: string): ProviderConfig {
   return {
     type: "zen",
-    baseUrl: "https://opencode.ai/zen/v1",
-    apiKey: apiKey || ZEN_PUBLIC_TOKEN,
+    baseUrl: ZEN_BASE_URL,
+    apiKey: apiKey || process.env.ZEN_API_KEY || ZEN_PUBLIC_TOKEN,
     wireApi: "chat",
   };
 }
