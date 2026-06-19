@@ -6,7 +6,7 @@ import type {
   SubscriptionTopic,
   ClientCommand,
 } from "../shared/protocol.js";
-import type { SidebarData, ChatSnapshot, AppSettingsSnapshot, KeybindingsSnapshot, UpdateSnapshot, LocalProjectsSnapshot, LlmProviderKind, AgentProvider } from "../shared/types.js";
+import type { SidebarData, AppSettingsSnapshot, KeybindingsSnapshot, UpdateSnapshot, LocalProjectsSnapshot, LlmProviderKind, AgentProvider } from "../shared/types.js";
 import { isClientEnvelope } from "../shared/protocol.js";
 import { parseCookies, getUserIdFromToken, COOKIE_NAME } from "./auth.js";
 import { ProviderConfigManager } from "./provider-config.js";

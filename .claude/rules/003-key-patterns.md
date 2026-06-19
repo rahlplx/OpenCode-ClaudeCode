@@ -9,8 +9,15 @@
 - Dynamic `import()` in server routes breaks after tsup bundling — use static imports
 - Check `res.headersSent` before setting status codes in streaming error handlers
 - Express 5 + path-to-regexp v8: wildcard routes must use named params — `app.get("*path", ...)` not `app.get("*", ...)` (bare `*` throws `PathError: Missing parameter name`)
-- pnpm blocks esbuild postinstall by default — add `"pnpm": { "onlyBuiltDependencies": ["esbuild"] }` to `package.json` so native binaries download on `pnpm install`
+- pnpm blocks postinstall by default — add `"pnpm": { "onlyBuiltDependencies": ["esbuild", "electron"] }` to `package.json`; include every package that needs a native postinstall step
 - Body-parser error middleware: catch **all** errors from `express.json()`, not just `SyntaxError` — use `error.status || error.statusCode || 400` to preserve HTTP status (413 Payload Too Large, etc.)
 - API/auth prefix guards: use `=== "/api"` or `startsWith("/api/")` — bare `startsWith("/api")` has false positives on `/api-docs`, `/author`, etc.
 - Vite chunk splitting: use `rollupOptions.output.manualChunks` to split large deps (xterm, lucide, vendor) and raise `chunkSizeWarningLimit` to 1000
 - Managed Gitea environments may block `git push --tags` (403) and have no CI runners — create GitHub releases via API instead of `git push origin <tag>`
+- ESLint v9 requires flat config `eslint.config.js` — `.eslintrc.*` files are no longer supported; use `tseslint.config()` wrapper from `typescript-eslint`
+- ESLint scope in mixed verbatim/owned codebases: use `files: ['src/server/**/*.ts', 'src/cli/**/*.ts']` glob to exclude Kanna verbatim files from linting
+- Capacitor `cleartext` must be scoped: `cleartext: serverUrl.startsWith('http://')` — never `true` unconditionally; omit `server` block entirely when no URL (uses secure `capacitor://localhost` default)
+- Android `allowBackup="false"` for all apps handling credentials or session tokens — prevents `adb backup` extraction
+- Capacitor splash screen: `AppTheme.NoActionBarLaunch` must use `parent="Theme.SplashScreen"` with `windowSplashScreenBackground` / `windowSplashScreenAnimatedIcon` / `postSplashScreenTheme` — `@drawable/splash` reference causes build crash
+- Capacitor template instrumented test has wrong package `com.getcapacitor.app` — update to actual `applicationId` after `cap add android`
+- Android Play Store requires `targetSdkVersion ≥ 35` (as of Aug 2025) — Capacitor 6 scaffolds 34; bump `variables.gradle` before submitting to Play Store

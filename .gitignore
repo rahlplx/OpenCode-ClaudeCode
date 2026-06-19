@@ -8,3 +8,7 @@ dist-electron/
 !.env.example
 *.tsbuildinfo
 .vibe/
+# Android build artifacts (keep source; ignore generated build output)
+android/.gradle/
+android/app/build/
+android/build/
