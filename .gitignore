@@ -12,3 +12,5 @@ dist-electron/
 android/.gradle/
 android/app/build/
 android/build/
+# Smoke-test output (screenshots + reports)
+smoke-results/
