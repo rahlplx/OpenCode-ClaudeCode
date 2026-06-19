@@ -104,7 +104,7 @@ Legacy routes remain at `/api/auth/login`, `/api/auth/logout`.
 
 ## Test suite
 
-129 tests across 8 files:
+149 tests across 9 files:
 - `tests/auth.test.ts` — Session creation, token validation, cookie parsing
 - `tests/circuit-breaker.test.ts` — State machine, failover, reset behavior
 - `tests/proxy.test.ts` — Protocol translation (Responses ↔ Chat Completions)
@@ -113,6 +113,7 @@ Legacy routes remain at `/api/auth/login`, `/api/auth/logout`.
 - `tests/provider-config.test.ts` — ProviderConfigManager: BYOK config, Kanna↔server provider mapping, proxy entry generation, failover chain, validation
 - `tests/chat-commands.test.ts` — ChatSessionManager: chat lifecycle, ownership, transcript entries, sidebar generation
 - `tests/e2e-simulation.test.ts` — E2E simulation: Zen free tier, Claude API protocol translation, Codex flow, BYOK, multi-tenant isolation, failover
+- `tests/kanna-protocol.test.ts` — Kanna WebSocket envelope validation (ClientEnvelope/ServerEnvelope shape, all 8 topic types, version guard)
 
 ## Reference projects
 

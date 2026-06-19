@@ -18,4 +18,4 @@ Entry: `src/main.tsx` → `src/client/app/App.tsx`. Zustand stores in `src/clien
 
 - **Frontend**: Vite + React → `dist/`. Path alias `@` → `src/`.
 - **CLI**: tsup → `dist-cli/` as ESM, Node 18 target.
-- **Dev proxy**: Vite proxies `/api` to `localhost:4080` with WS upgrade.
+- **Dev proxy**: Vite proxies `/ws`, `/api`, `/auth`, `/health` to `localhost:4080` with WS upgrade.
