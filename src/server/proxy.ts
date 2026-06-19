@@ -1,18 +1,27 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import type { ProviderType } from "@/types";
+import { CircuitBreaker } from "./circuit-breaker.js";
+
+interface ProviderEntry {
+  responsesUrl: string;
+  chatUrl: string;
+  apiKey?: string;
+  wireApi: "responses" | "chat";
+  buildHeaders: (token: string) => Record<string, string>;
+}
 
 interface ProxyConfig {
-  providers: Record<
-    ProviderType,
-    {
-      responsesUrl: string;
-      chatUrl: string;
-      apiKey?: string;
-      wireApi: "responses" | "chat";
-      buildHeaders: (token: string) => Record<string, string>;
-    }
-  >;
+  providers: Record<ProviderType, ProviderEntry>;
 }
+
+const FAILOVER_CHAIN: ProviderType[] = ["zen", "openrouter", "custom"];
+const STREAM_TIMEOUT_MS = 120_000;
+const NON_STREAM_TIMEOUT_MS = 30_000;
+
+export const circuitBreaker = new CircuitBreaker({
+  failureThreshold: 3,
+  resetTimeoutMs: 60_000,
+});
 
 interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -205,13 +214,6 @@ export async function handleProviderProxy(
   providerType: ProviderType,
   config: ProxyConfig,
 ): Promise<void> {
-  const provider = config.providers[providerType];
-  if (!provider) {
-    res.writeHead(400, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: `Unknown provider: ${providerType}` }));
-    return;
-  }
-
   let parsedBody: Record<string, unknown>;
   const expressReq = req as IncomingMessage & { body?: Record<string, unknown> };
   if (expressReq.body && typeof expressReq.body === "object") {
@@ -227,17 +229,43 @@ export async function handleProviderProxy(
     }
   }
 
-  const apiKey = provider.apiKey;
-  if (!apiKey) {
-    res.writeHead(401, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({
-        error: `No API key configured for ${providerType}`,
-      }),
-    );
-    return;
+  const startIndex = FAILOVER_CHAIN.indexOf(providerType);
+  const chain = startIndex >= 0
+    ? FAILOVER_CHAIN.slice(startIndex)
+    : [providerType];
+
+  for (const currentProvider of chain) {
+    if (!circuitBreaker.isAvailable(currentProvider)) continue;
+
+    const provider = config.providers[currentProvider];
+    if (!provider) continue;
+
+    const apiKey = provider.apiKey;
+    if (!apiKey) continue;
+
+    if (provider.responsesUrl === "" && provider.chatUrl === "") continue;
+
+    const result = await tryProvider(currentProvider, provider, apiKey, parsedBody, res);
+    if (result === "success") return;
+    if (result === "responded") return;
   }
 
+  if (!res.headersSent) {
+    res.writeHead(503, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      error: "All providers unavailable",
+      status: circuitBreaker.getStatus(),
+    }));
+  }
+}
+
+async function tryProvider(
+  providerType: string,
+  provider: ProviderEntry,
+  apiKey: string,
+  parsedBody: Record<string, unknown>,
+  res: ServerResponse,
+): Promise<"success" | "responded" | "failover"> {
   let upstreamUrl: string;
   let upstreamBody: unknown;
 
@@ -249,43 +277,42 @@ export async function handleProviderProxy(
     upstreamBody = parsedBody;
   }
 
+  if (!upstreamUrl) return "failover";
+
+  const timeoutMs = parsedBody.stream ? STREAM_TIMEOUT_MS : NON_STREAM_TIMEOUT_MS;
+
   try {
     const upstreamRes = await fetch(upstreamUrl, {
       method: "POST",
       headers: provider.buildHeaders(apiKey),
       body: JSON.stringify(upstreamBody),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!upstreamRes.ok) {
-      const errorText = await upstreamRes.text();
       const statusCode = upstreamRes.status;
 
-      if (statusCode === 429) {
-        res.writeHead(429, { "Content-Type": "application/json" });
-        res.end(
-          JSON.stringify({
-            error: "Rate limited",
-            provider: providerType,
-            retryAfter: upstreamRes.headers.get("retry-after"),
-          }),
-        );
-        return;
+      if (statusCode === 429 || statusCode >= 500) {
+        circuitBreaker.recordFailure(providerType);
+        return "failover";
       }
 
-      res.writeHead(statusCode, { "Content-Type": "application/json" });
-      try {
-        res.end(errorText);
-      } catch {
-        res.end(JSON.stringify({ error: errorText }));
+      const safeError = sanitizeErrorResponse(statusCode, providerType);
+      if (!res.headersSent) {
+        res.writeHead(statusCode, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(safeError));
       }
-      return;
+      return "responded";
     }
+
+    circuitBreaker.recordSuccess(providerType);
 
     if (parsedBody.stream && upstreamRes.body) {
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        "X-Provider": providerType,
       });
 
       const reader = upstreamRes.body.getReader();
@@ -313,17 +340,33 @@ export async function handleProviderProxy(
         result = responseJson;
       }
 
-      res.writeHead(200, { "Content-Type": "application/json" });
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "X-Provider": providerType,
+      });
       res.end(JSON.stringify(result));
     }
-  } catch (err) {
-    res.writeHead(502, { "Content-Type": "application/json" });
-    res.end(
-      JSON.stringify({
-        error: `Proxy error: ${err instanceof Error ? err.message : String(err)}`,
-      }),
-    );
+
+    return "success";
+  } catch {
+    circuitBreaker.recordFailure(providerType);
+    return "failover";
   }
+}
+
+function sanitizeErrorResponse(
+  statusCode: number,
+  provider: string,
+): Record<string, unknown> {
+  return {
+    error: statusCode === 401
+      ? "Authentication failed"
+      : statusCode === 403
+        ? "Access denied"
+        : `Provider ${provider} returned ${statusCode}`,
+    provider,
+    status: statusCode,
+  };
 }
 
 function convertStreamChunkToResponses(chunk: string): string {
@@ -365,10 +408,21 @@ function convertStreamChunkToResponses(chunk: string): string {
   return output;
 }
 
+const MAX_BODY_SIZE = 32 * 1024;
+
 function readRequestBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_SIZE) {
+        reject(new Error("Request body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString()));
     req.on("error", reject);
   });

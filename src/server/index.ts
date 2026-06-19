@@ -2,7 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { OpenCodeBridge } from "./bridge.js";
-import { handleProviderProxy } from "./proxy.js";
+import { handleProviderProxy, circuitBreaker } from "./proxy.js";
 import { handleLogin, requireAuth, generatePassword, getUserFromRequest, parseCookies, getUserIdFromToken, COOKIE_NAME } from "./auth.js";
 import { getZenConfig, buildZenHeaders, getZenModels } from "../providers/zen.js";
 import { getOpenRouterConfig, fetchFreeModels } from "../providers/openrouter.js";
@@ -99,6 +99,7 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
       res.json({
         status: "ok",
         opencode: bridge.isConnected(),
+        providers: circuitBreaker.getStatus(),
         version: process.env.npm_package_version || "0.1.0",
       });
     } else {

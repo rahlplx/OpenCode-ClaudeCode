@@ -15,6 +15,7 @@ export class OpenCodeBridge extends EventEmitter {
   private ws: WebSocket | null = null;
   private pendingCalls = new Map<number, PendingCall>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempt = 0;
   private connected = false;
 
   constructor(baseUrl = "http://127.0.0.1:4096") {
@@ -154,6 +155,7 @@ export class OpenCodeBridge extends EventEmitter {
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
+      this.reconnectAttempt = 0;
       this.emit("ws:connected");
     };
 
@@ -182,10 +184,14 @@ export class OpenCodeBridge extends EventEmitter {
     onNotification: (notification: Notification) => void,
   ): void {
     if (this.reconnectTimer) return;
+    const baseDelay = Math.min(1000 * Math.pow(2, this.reconnectAttempt), 30_000);
+    const jitter = Math.random() * baseDelay * 0.3;
+    const delay = baseDelay + jitter;
+    this.reconnectAttempt++;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connectWebSocket(onNotification);
-    }, 3000);
+    }, delay);
   }
 
   async listSessions(): Promise<unknown> {
