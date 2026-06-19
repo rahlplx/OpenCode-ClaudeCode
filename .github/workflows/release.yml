@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag name (e.g. v0.1.0)'
+        description: Tag name
         required: true
-        default: 'v0.1.0'
+        default: v0.1.0
 
 permissions:
   contents: write
@@ -14,21 +14,18 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create GitHub Release
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const tag = context.payload.inputs.tag;
-            const { data: release } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: tag,
-              target_commitish: 'main',
-              name: `${tag} — Initial consumer-ready release`,
-              body: `## What's included
+      - name: Create release
+        run: |
+          gh release create "${{ inputs.tag }}" \
+            --title "${{ inputs.tag }} — Initial consumer-ready release" \
+            --target main \
+            --notes "$(cat <<'NOTES'
+## What's included
 
 ### Web app / Self-hosted
 - React 19 + Zustand SPA (Kanna UI) served by Express 5 bridge
@@ -40,35 +37,20 @@ jobs:
 
 ### Windows EXE (Electron)
 - Single-instance lock, loading screen, window state persistence
-- No white flash, dark \`#0f0f10\` background
-- Navigation guard, error dialog on bridge failure
-- Builds: portable \`.exe\` + NSIS installer
+- No white flash, dark background; navigation guard; error dialog on bridge failure
+- Builds: portable .exe + NSIS installer (pnpm build:win)
 
 ### Android APK (Capacitor)
-- Capacitor 6 WebView wrapper pointing at your self-hosted OpenCode instance
-- Set \`OPENCODE_SERVER_URL=https://your-server.com pnpm build:android\` to configure
-- R8 minification + ProGuard rules for Capacitor bridge + Cordova plugins
-- targetSdkVersion 35 (Play Store compliant as of Aug 2025)
-- Setup page shown when built without a server URL
+- Capacitor 6 WebView pointing at your self-hosted OpenCode instance
+- R8 minification + ProGuard rules; targetSdkVersion 35 (Play Store Aug 2025)
+- Set OPENCODE_SERVER_URL=https://your-server.com pnpm build:android
 
 ## Quick start
 
-\`\`\`bash
-# Self-hosted
-pnpm install && pnpm build
-node dist-cli/index.js serve --port 4080 --static-dir dist/
-
-# Windows EXE
-pnpm build:win   # → dist-electron/*.exe
-
-# Android APK
-OPENCODE_SERVER_URL=https://your-server.com pnpm build:android
-# then open android/ in Android Studio → Generate Signed APK
-\`\`\`
+    pnpm install && pnpm build
+    node dist-cli/index.js serve --port 4080 --static-dir dist/
 
 ## Test coverage
-149 unit/integration tests across auth, circuit breaker, proxy translation, WebSocket protocol, chat sessions, provider config, and E2E simulation.`,
-              draft: false,
-              prerelease: false,
-            });
-            console.log('Release created:', release.html_url);
+149 tests: auth, circuit breaker, proxy, WebSocket protocol, chat, provider config, E2E simulation.
+NOTES
+)"
