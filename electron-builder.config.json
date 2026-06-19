@@ -1,6 +1,7 @@
 {
   "appId": "com.opencode.claudecode",
   "productName": "OpenCode",
+  "copyright": "Copyright © 2026 OpenCode-ClaudeCode Contributors",
   "main": "electron/main.cjs",
   "asar": false,
   "directories": {
@@ -17,19 +18,29 @@
       { "target": "portable", "arch": ["x64"] },
       { "target": "nsis", "arch": ["x64"] }
     ],
-    "icon": "public/icon-512.png"
+    "icon": "public/icon-512.png",
+    "requestedExecutionLevel": "asInvoker"
   },
   "nsis": {
-    "oneClick": true,
+    "oneClick": false,
     "perMachine": false,
-    "deleteAppDataOnUninstall": true
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "OpenCode"
   },
   "mac": {
     "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
-    "icon": "public/icon-512.png"
+    "icon": "public/icon-512.png",
+    "category": "public.app-category.developer-tools"
+  },
+  "dmg": {
+    "title": "OpenCode ${version}"
   },
   "linux": {
     "target": [{ "target": "AppImage", "arch": ["x64"] }],
-    "icon": "public/icon-512.png"
+    "icon": "public/icon-512.png",
+    "category": "Development"
   }
 }
