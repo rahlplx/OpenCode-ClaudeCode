@@ -1,6 +1,6 @@
 # Final Grilled Plan: Multi-Tenant LLM-Agnostic BYOK Platform
 
-Stress-tested by 8 personas. No UI/UX changes — responsive CSS only.
+Stress-tested by 8 personas. Kanna (React + Zustand) as web UI, made responsive.
 
 ---
 
@@ -8,13 +8,33 @@ Stress-tested by 8 personas. No UI/UX changes — responsive CSS only.
 
 | Decision | Value | Rationale |
 |----------|-------|-----------|
-| Frontend framework | **Vue 3 — no changes** | User directive: no UI/UX changes |
-| UI changes scope | **Responsive CSS only** | Device-tailored, not redesigned |
-| Backend architecture | **Express 5 bridge** | Proven, working |
+| Frontend framework | **Kanna (React + Zustand)** | Direct code reuse from reference project, same ecosystem |
+| UI changes scope | **Responsive for mobile/tablet/desktop** | Screen-size agnostic, device-tailored |
+| Backend architecture | **Express 5 bridge** | Proven, working — unchanged |
 | Multi-tenancy | **Required** | Systematic user isolation |
 | LLM provider model | **Agnostic — any provider** | Not locked to Zen/OpenRouter |
 | Key management | **BYOK** | Users bring their own API keys |
 | Free tier | **Keep as default fallback** | Zen + OpenRouter :free still available |
+
+## PIVOT: Vue 3 → Kanna (React + Zustand)
+
+### What changes
+- **Delete**: `src/components/`, `src/composables/`, `src/router/`, `src/App.vue`, `src/main.ts`
+- **Keep**: `src/server/`, `src/providers/`, `src/cli/`, `src/types/`, `src/api/`
+- **Add**: Kanna React frontend (clone + adapt to our backend API)
+- **Replace deps**: vue, vue-router → react, react-dom, zustand, react-router, react-resizable-panels
+
+### What stays the same
+- Express 5 bridge server (proxy.ts, bridge.ts, auth.ts, index.ts)
+- Provider proxy (Zen, OpenRouter, BYOK dynamic)
+- CLI entry point
+- WebSocket notifications
+- Build: Vite (supports React via @vitejs/plugin-react)
+
+### Why Kanna over Vue 3
+- Kanna already has: resizable panels, mobile sidebar drawer, terminal workspace, responsive breakpoints
+- Same framework = direct component/hook/store reuse
+- 2000 LOC Vue rewrite vs ongoing translation cost of every Kanna pattern
 
 ---
 
@@ -184,67 +204,53 @@ Phase 4: Multi-user auth with registration (1 day)
 
 ---
 
-## PART 3: Responsive CSS (No UI/UX Changes)
+## PART 3: Responsive UI via Kanna
 
-### What Changes
+### Kanna Already Has (From Research)
 
-**ONLY CSS classes and Tailwind responsive prefixes.** No new components, no layout restructuring, no new UI patterns.
+- **Resizable panels** via `react-resizable-panels` (sidebar, chat, terminal splits)
+- **Mobile sidebar drawer** — `fixed inset-0 z-50` overlay with backdrop blur on <768px
+- **Right sidebar** — `absolute inset-y-0 right-0` slide-in for Git/browser panels on mobile
+- **Safe-area-insets** — `pt-[max(env(safe-area-inset-top),0px)]` for notch phones
+- **Touch-friendly** — `WebkitOverflowScrolling: "touch"`, `touchAction: "pan-y"`
+- **100dvh** layout — uses dynamic viewport height
+- **Breakpoint** at `md:` (768px) for mobile/desktop split
 
-| File | Change Type | What |
-|------|-------------|------|
-| MainLayout.vue | CSS only | Add `hidden md:flex` to sidebar container, `flex md:hidden` to mobile menu button |
-| Sidebar.vue | CSS only | Add `fixed inset-0 z-50 md:relative` for drawer mode on mobile |
-| ChatPanel.vue | CSS only | Add `h-[100dvh]`, safe-area padding, larger tap targets |
-| ChatMessage.vue | CSS only | Add `max-w-[92%] md:max-w-[80%]`, touch scroll on code blocks |
-| style.css | CSS only | Add `@media` for reduced motion, safe-area-insets |
+### What We Add for Full Device Coverage
 
-### What Does NOT Change
+| Device | Width | Kanna Default | Our Enhancement |
+|--------|-------|---------------|-----------------|
+| Phone portrait | 320-480px | Sidebar drawer, single panel | Verify touch targets 44px+, test virtual keyboard |
+| Phone landscape | 568-926px | Works via flexbox | Validate no overflow, test with notch |
+| Tablet portrait | 768-1024px | Desktop mode kicks in | Verify sidebar width appropriate |
+| Tablet landscape | 1024-1366px | Full desktop | Add optional split terminal view |
+| Desktop | 1280px+ | Full layout with resizable panels | Confirm all resize handles work |
+| Ultrawide | 2560px+ | Stretches | Add max-width container or 3-column layout |
 
-- No new Vue components
-- No component extraction (ChatInput, ChatNavbar, etc.)
-- No layout restructuring
-- No swipe gesture handlers
-- No new JavaScript logic
-- No visual redesign
+### Kanna Responsive Patterns to Preserve
 
-### Responsive Classes to Add
+```tsx
+// KannaSidebar.tsx — mobile drawer pattern
+<div className="fixed inset-0 z-50 md:relative md:inset-auto">
+  <div className="md:h-[calc(100dvh-16px)] md:my-2 md:ml-2 md:border md:rounded-2xl">
 
-```vue
-<!-- MainLayout.vue: sidebar visibility -->
-<aside class="w-64 hidden md:flex flex-col">  <!-- was: "w-64 flex flex-col" -->
+// ChatPage — mobile right sidebar overlay
+const MOBILE_RIGHT_SIDEBAR_BREAKPOINT_PX = 768;
+<div className="absolute inset-y-0 right-0 w-[min(92vw,30rem)]
+               transition-transform duration-300">
 
-<!-- MainLayout.vue: mobile menu button -->
-<button class="flex md:hidden p-2">☰</button>  <!-- new: toggle sidebar visibility -->
-
-<!-- Sidebar.vue: mobile drawer -->
-<div class="fixed inset-0 z-50 md:relative md:inset-auto"
-     v-if="!collapsed || isMobileOpen">
-
-<!-- ChatMessage.vue: responsive max-width -->
-<div class="max-w-[92%] sm:max-w-[85%] md:max-w-[80%]">  <!-- was: max-w-[80%] -->
-
-<!-- ChatMessage.vue: code blocks -->
-<pre class="overflow-x-auto [-webkit-overflow-scrolling:touch]">
-
-<!-- ChatPanel.vue: input area -->
-<div class="pb-[env(safe-area-inset-bottom)]">
-<textarea class="min-h-[44px] text-base">  <!-- 16px prevents iOS zoom -->
-
-<!-- style.css -->
-@media (prefers-reduced-motion: reduce) {
-  * { transition-duration: 0.01ms !important; }
-}
+// Safe areas for notch phones
+<div className="pt-[max(env(safe-area-inset-top),0px)]
+               pb-[max(env(safe-area-inset-bottom),0px)]">
 ```
 
-### Mobile Sidebar Toggle (Minimal JS)
+### Our Additions
 
-One reactive boolean — `isMobileOpen` — controls sidebar visibility on mobile. No new component.
-
-```typescript
-// In useAgentState.ts — add one ref
-const isMobileOpen = ref(false);
-function toggleMobileSidebar() { isMobileOpen.value = !isMobileOpen.value; }
-```
+1. **Test all breakpoints** — 320px, 768px, 1024px, 1280px, 2560px
+2. **Font size 16px on inputs** — prevent iOS auto-zoom
+3. **Reduced motion support** — `@media (prefers-reduced-motion: reduce)`
+4. **Dark/light theme** — Kanna has CSS variables, ensure both work on all sizes
+5. **PWA manifest** (Phase 2) — `display: standalone` for mobile app feel
 
 ---
 
@@ -379,7 +385,30 @@ Added via `@media (prefers-reduced-motion: reduce)` in style.css. Disables trans
 
 ---
 
-## PART 6: Implementation Phases (Revised)
+## PART 6: Implementation Phases (Revised — Kanna Pivot)
+
+### Phase 0: Kanna Frontend Integration (3 days)
+
+**Step 1 — Scaffold**:
+- Clone Kanna source into `src/client/` (React components, Zustand stores, styles)
+- Remove Vue 3 frontend: `src/components/`, `src/composables/`, `src/router/`, `src/App.vue`, `src/main.ts`
+- Replace Vite Vue plugin with React plugin: `@vitejs/plugin-react`
+- Update `package.json`: swap vue deps → react, zustand, react-router, react-resizable-panels
+
+**Step 2 — Wire to backend**:
+- Point Kanna's LLM provider to our Express bridge (`/api/proxy/:provider/v1/responses`)
+- Map Kanna's WebSocket commands to our notification protocol
+- Wire Kanna's session management to our `/api/rpc` endpoints
+- Configure Kanna's `ProviderCatalog` to use our dynamic provider registry
+
+**Step 3 — Responsive verification**:
+- Test Kanna's existing responsive patterns on 320px, 768px, 1024px, 1280px, 2560px
+- Fix any breakpoint issues for our backend API shape
+- Add reduced motion + safe-area-inset enhancements
+
+**Files removed**: `src/components/`, `src/composables/`, `src/router/`, `src/App.vue`, `src/main.ts`, `src/style.css`
+**Files added**: `src/client/` (Kanna React source tree)
+**Files changed**: `package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`
 
 ### Phase 1: LLM-Agnostic Provider Registry (2 days)
 
@@ -406,7 +435,7 @@ Added via `@media (prefers-reduced-motion: reduce)` in style.css. Disables trans
 **Files changed**:
 - `src/server/auth.ts` — Add userId to sessions
 - `src/server/index.ts` — Per-user WebSocket routing, API scoping
-- `src/composables/useAgentState.ts` — Filter notifications by known sessions
+- Kanna Zustand stores — Filter notifications by known sessions, scope localStorage
 
 ### Phase 4: Circuit Breaker + Failover (1 day)
 
@@ -414,23 +443,13 @@ Added via `@media (prefers-reduced-motion: reduce)` in style.css. Disables trans
 - `src/server/proxy.ts` — Circuit breaker state machine, auto-failover chain
 - `src/server/index.ts` — Failover chain configuration per user
 
-### Phase 5: Responsive CSS (0.5 days)
-
-**Files changed**:
-- `src/components/layout/MainLayout.vue` — Responsive sidebar visibility
-- `src/components/sidebar/Sidebar.vue` — Mobile drawer positioning
-- `src/components/chat/ChatPanel.vue` — Safe area, tap targets, dvh
-- `src/components/chat/ChatMessage.vue` — Responsive max-width, code scroll
-- `src/style.css` — Reduced motion, safe-area-insets
-- `src/composables/useAgentState.ts` — Add `isMobileOpen` ref
-
-### Phase 6: Security Hardening (1 day)
+### Phase 5: Security Hardening (1 day)
 
 **Files changed**:
 - `src/server/index.ts` — CORS, rate limiting, security headers, WS auth
 - `src/server/proxy.ts` — URL validation, response sanitization, error sanitization
 
-### Phase 7: Tests (2 days)
+### Phase 6: Tests (2 days)
 
 **Files new**:
 - `tests/proxy.test.ts` — Protocol translation, failover, circuit breaker
@@ -438,7 +457,7 @@ Added via `@media (prefers-reduced-motion: reduce)` in style.css. Disables trans
 - `tests/keys.test.ts` — BYOK encryption/decryption
 - `tests/providers.test.ts` — Provider registry, preset loading
 
-**Total effort**: ~9.5 days
+**Total effort**: ~12 days (added 3 days for Kanna integration in Phase 0)
 
 ---
 
@@ -464,16 +483,18 @@ Added via `@media (prefers-reduced-motion: reduce)` in style.css. Disables trans
 - [ ] Single-user mode (`--no-password`) still works as before
 - [ ] Per-user rate limiting prevents one user monopolizing resources
 
-### Responsive CSS
+### Kanna Frontend + Responsive
 
+- [ ] Kanna React frontend builds and runs via Vite
+- [ ] Kanna connects to our Express bridge backend (`/api/rpc`, `/api/proxy`)
+- [ ] WebSocket notifications flow from bridge to Kanna UI
 - [ ] App loads without horizontal scroll on 320px viewport
-- [ ] Sidebar hidden on mobile, shown via menu button
-- [ ] Chat messages use 92% width on mobile, 80% on desktop
-- [ ] Input tap target is 44px+ height
+- [ ] Sidebar drawer works on mobile (<768px)
+- [ ] Resizable panels work on desktop (>1024px)
 - [ ] Safe area insets respected on notch phones
 - [ ] Reduced motion preference honored
-- [ ] No new Vue components created
-- [ ] No layout restructuring
+- [ ] Input tap targets 44px+ on mobile
+- [ ] Virtual keyboard doesn't break layout (dvh, visualViewport)
 
 ### Harness
 
@@ -494,7 +515,8 @@ Added via `@media (prefers-reduced-motion: reduce)` in style.css. Disables trans
 | BYOK key encryption key loss | Low | Critical | Document key backup, support re-registration |
 | Provider adds breaking API change | Medium | Medium | Pin provider SDK versions, monitor changelogs |
 | Multi-tenant perf overhead | Low | Low | Map lookups are O(1), encryption <1ms |
-| CSS-only responsive insufficient | Medium | Medium | If needed, add minimal JS (one boolean). No component restructuring |
+| Kanna API incompatible with our backend | Medium | High | Map Kanna's WS commands to our JSON-RPC protocol; adapter layer |
+| Kanna license restrictions | Low | Critical | Verify MIT/Apache license before integration |
 | Free tier rate limits hit frequently | High | Medium | Queue messages, surface clear wait time to user |
 | User configures invalid provider URL | Medium | Low | URL validation on registration, test endpoint |
 | Server restart loses BYOK keys | High | High | MVP: accept. Production: persistent storage |
@@ -505,12 +527,13 @@ Added via `@media (prefers-reduced-motion: reduce)` in style.css. Disables trans
 
 | Decision | Rationale |
 |----------|-----------|
-| Keep Vue 3 | User directive: no UI/UX changes |
-| CSS-only responsive | Minimal change surface, no risk of breaking existing UI |
+| **Pivot to Kanna (React + Zustand)** | Direct code reuse, same ecosystem as reference, built-in responsive patterns |
+| Use Kanna as-is, make responsive | Already has resizable panels, mobile drawer, safe areas — enhance, don't redesign |
+| Keep Express 5 backend unchanged | Proven, working — proxy, bridge, auth all stay |
 | Dynamic provider registry over enum | Extensible to any provider without code changes |
 | AES-256-GCM for BYOK keys | Native Node.js crypto, no new dependencies |
 | In-memory key storage for MVP | Simplicity. Persistent storage = Phase 2 |
 | Circuit breaker per provider per user | Prevents one user's provider failure from affecting others |
-| No new Vue components | User directive: no UI/UX changes |
 | Anthropic Messages adapter | Only non-OpenAI-compatible major provider |
 | Provider presets over discovery | Faster setup, known-good configs |
+| Multi-tenant from day 1 | Retrofitting isolation is harder than building it in |
