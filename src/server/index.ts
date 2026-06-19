@@ -394,7 +394,7 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
   if (options.staticDir) {
     app.use(express.static(options.staticDir));
-    app.get("*", (_req, res) => {
+    app.get("*path", (_req, res) => {
       res.sendFile("index.html", { root: options.staticDir });
     });
   }
