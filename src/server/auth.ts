@@ -77,7 +77,8 @@ export function handleLogin(
       return;
     }
 
-    const token = createSession();
+    const userId = createHash("sha256").update(submitted).digest("hex").slice(0, 8);
+    const token = createSession(userId);
     res.writeHead(200, {
       "Content-Type": "application/json",
       "Set-Cookie": `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL / 1000}`,

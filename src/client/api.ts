@@ -1,10 +1,4 @@
-import type {
-  Session,
-  Message,
-  Model,
-  Notification,
-  ServerRequest,
-} from "@/types";
+import type { Session, Message, Model } from "@/types";
 
 const BASE_URL = "/api";
 
@@ -84,39 +78,25 @@ async function rpcStream(
 }
 
 export const api = {
-  async listSessions(): Promise<Session[]> {
-    return rpc<Session[]>("session.list");
-  },
+  listSessions: () => rpc<Session[]>("session.list"),
 
-  async createSession(projectPath: string, modelId?: string): Promise<Session> {
-    return rpc<Session>("session.create", { projectPath, modelId });
-  },
+  createSession: (projectPath: string, modelId?: string) =>
+    rpc<Session>("session.create", { projectPath, modelId }),
 
-  async sendMessage(
-    sessionId: string,
-    content: string,
-    onDelta: (text: string) => void,
-  ): Promise<Message> {
-    return rpcStream("session.chat", { sessionId, content }, onDelta);
-  },
+  sendMessage: (sessionId: string, content: string, onDelta: (text: string) => void) =>
+    rpcStream("session.chat", { sessionId, content }, onDelta),
 
-  async abortGeneration(sessionId: string): Promise<void> {
-    await rpc<void>("session.abort", { sessionId });
-  },
+  abortGeneration: (sessionId: string) =>
+    rpc<void>("session.abort", { sessionId }),
 
   async listModels(): Promise<Model[]> {
     const res = await fetch(`${BASE_URL}/models`);
-    if (!res.ok) {
-      throw new Error(`Failed to fetch models: ${res.statusText}`);
-    }
+    if (!res.ok) throw new Error(`Failed to fetch models: ${res.statusText}`);
     const json = (await res.json()) as { models: Model[] };
     return json.models;
   },
 
-  async respondToServerRequest(
-    requestId: string,
-    approved: boolean,
-  ): Promise<void> {
+  async respondToServerRequest(requestId: string, approved: boolean): Promise<void> {
     const res = await fetch(`${BASE_URL}/server-requests/respond`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -139,52 +119,8 @@ export const api = {
     return res.ok;
   },
 
-  async healthCheck(): Promise<{
-    status: string;
-    opencode: boolean;
-    version: string;
-  }> {
+  async healthCheck(): Promise<{ status: string; opencode: boolean; version: string }> {
     const res = await fetch(`${BASE_URL}/health`);
-    return res.json() as Promise<{
-      status: string;
-      opencode: boolean;
-      version: string;
-    }>;
-  },
-
-  connectWebSocket(
-    onNotification: (notification: Notification) => void,
-  ): WebSocket {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${window.location.host}/api/ws`;
-    let reconnectAttempt = 0;
-
-    function connect(): WebSocket {
-      const ws = new WebSocket(url);
-
-      ws.onmessage = (event) => {
-        try {
-          const notification = JSON.parse(event.data) as Notification;
-          onNotification(notification);
-        } catch {
-          // skip malformed messages
-        }
-      };
-
-      ws.onopen = () => {
-        reconnectAttempt = 0;
-      };
-
-      ws.onclose = () => {
-        const baseDelay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30_000);
-        const jitter = Math.random() * baseDelay * 0.3;
-        reconnectAttempt++;
-        setTimeout(connect, baseDelay + jitter);
-      };
-
-      return ws;
-    }
-
-    return connect();
+    return res.json();
   },
 };

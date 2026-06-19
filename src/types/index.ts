@@ -60,14 +60,6 @@ export interface ProviderConfig {
   wireApi: "responses" | "chat";
 }
 
-export interface ProviderStatus {
-  type: ProviderType;
-  connected: boolean;
-  rateLimited: boolean;
-  retryAfter?: number;
-  error?: string;
-}
-
 export type NotificationType =
   | "session.created"
   | "message.delta"
@@ -96,13 +88,4 @@ export interface JsonRpcResponse {
   id: number;
   result?: unknown;
   error?: { code: number; message: string; data?: unknown };
-}
-
-export interface AppConfig {
-  port: number;
-  host: string;
-  password?: string;
-  noPassword: boolean;
-  opencodePath?: string;
-  provider: ProviderConfig;
 }
