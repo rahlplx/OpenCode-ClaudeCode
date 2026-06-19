@@ -7,11 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 pnpm install              # Install dependencies
 pnpm dev                  # Vite dev server on :5173, proxies /api to bridge at :4080
-pnpm build                # vue-tsc type-check + vite build → dist/
+pnpm build                # tsc type-check + vite build → dist/
 pnpm build:cli            # tsup bundle → dist-cli/ (CLI entry with shebang)
 pnpm preview              # Serve production build locally
-pnpm typecheck            # vue-tsc --noEmit
-pnpm lint                 # eslint src/
+pnpm typecheck            # tsc --noEmit
 pnpm test                 # vitest run (all tests)
 pnpm test:watch           # vitest in watch mode
 
@@ -21,7 +20,25 @@ node dist-cli/index.js serve --port 4080 --static-dir dist/
 
 ## Architecture
 
-Three-tier bridge: **Vue 3 SPA → Express bridge server → OpenCode process + provider proxy**.
+Three-tier bridge: **React 19 SPA → Express bridge server → OpenCode process + provider proxy**.
+
+### Frontend (React 19 + Zustand)
+
+Built in Kanna's architecture pattern. Entry point: `src/main.tsx` → `src/client/app/App.tsx`.
+
+**Zustand stores** (`src/client/stores/`):
+- `connection.ts` — WebSocket lifecycle with exponential backoff reconnection
+- `sessions.ts` — Session CRUD with optimistic creation and rollback
+- `chat.ts` — Messages, streaming deltas, tool approvals, provider selection, notification handling
+
+**Components** (`src/client/components/`):
+- `layout/MainLayout.tsx` — App shell with sidebar toggle, provider selector, connection indicator
+- `sidebar/Sidebar.tsx` — Session list grouped by project
+- `chat/ChatPanel.tsx` — Message thread, input, approval queue, error banner
+- `chat/ChatMessage.tsx` — Code block parsing, copy-to-clipboard
+- `chat/ApprovalDialog.tsx` — Tool request approve/deny
+
+**API client** (`src/client/api.ts`): RPC over HTTP + SSE streaming. Replaces the old Vue gateway.
 
 ### Backend flow
 
@@ -29,51 +46,51 @@ Three-tier bridge: **Vue 3 SPA → Express bridge server → OpenCode process + 
 
 All `/api/rpc` POST requests forward to the bridge. When `Accept: text/event-stream`, the bridge uses `rpcStream()` which reads SSE chunks from OpenCode and simultaneously writes deltas to the HTTP response and broadcasts via WebSocket to all connected clients.
 
+### Multi-tenant isolation
+
+- Per-user WebSocket routing via `clientsByUser` map
+- Session/request ownership tracking prevents cross-user access
+- Login derives deterministic userId from password hash (SHA-256 first 8 hex chars)
+- WebSocket auth checks cookie on upgrade
+- Session list filtered by ownership
+
 ### Provider proxy layer
 
-`src/server/proxy.ts` implements bidirectional **Responses API ↔ Chat Completions API** protocol translation. Key functions:
-- `responsesToChatCompletions()` — converts Responses-format request to Chat Completions payload
-- `chatCompletionsToResponses()` — converts Chat Completions response back to Responses format
-- `convertStreamChunkToResponses()` — transforms streaming Chat Completions SSE deltas into Responses SSE events
+`src/server/proxy.ts` implements bidirectional **Responses API ↔ Chat Completions API** protocol translation with circuit breaker failover.
 
-Each provider (`src/providers/`) defines its endpoint URLs, wire format preference, and header builder. The proxy routes through `/api/proxy/:provider/v1/responses`.
-
-**Provider hierarchy**: OpenCode Zen (free, primary) → OpenRouter `:free` models (secondary, 10-min cached discovery) → Custom endpoint (user key).
-
-### Frontend state
-
-All UI state lives in a single composable `useAgentState()` (`src/composables/useAgentState.ts`). This follows the codex-mobile pattern: one file owns sessions, messages, models, provider config, and UI state. Messages are split into `persistedMessages` (server-confirmed) and `liveStreamMessages` (in-flight deltas) which merge in the `currentMessages` computed.
-
-WebSocket notifications drive state updates. A 220ms debounce (`EVENT_SYNC_DEBOUNCE_MS`) coalesces rapid notification-driven session list refreshes.
-
-Session creation uses optimistic insertion — the UI adds a temp session immediately, then replaces it with the server response or rolls back on error.
-
-### API gateway
-
-`src/api/gateway.ts` is the frontend's RPC client. For streaming, it sends `Accept: text/event-stream` and parses SSE lines from the response body reader. It also manages the WebSocket connection for push notifications.
+**Failover chain**: Zen (free) → OpenRouter `:free` models → Custom (BYOK). Circuit breaker trips after 3 failures, resets after 60s. 429/5xx triggers automatic failover to next provider.
 
 ### Auth
 
-`src/server/auth.ts` uses SHA-256 hashed `timingSafeEqual` for password comparison (no length-based timing leak). Sessions use HttpOnly cookies (`occ_session_token`) with 24h TTL.
+`src/server/auth.ts` uses SHA-256 hashed `timingSafeEqual` for password comparison. Sessions use HttpOnly cookies (`occ_session_token`) with 24h TTL. Rate limiting: 100 req/min per IP with periodic cleanup.
 
 ### Build targets
 
-- **Frontend**: Vite builds to `dist/`. Path alias `@` → `src/`.
-- **CLI**: tsup bundles `src/cli/index.ts` to `dist-cli/` as ESM with Node 18 target. Express, Commander, ws, and @opencode-ai/sdk are external (not bundled).
+- **Frontend**: Vite + React builds to `dist/`. Path alias `@` → `src/`.
+- **CLI**: tsup bundles `src/cli/index.ts` to `dist-cli/` as ESM with Node 18 target.
 - **Dev proxy**: Vite proxies `/api` requests to `localhost:4080` with WebSocket upgrade support.
 
 ## Key patterns
 
-- Express `json()` middleware runs globally — handlers receive parsed `req.body`, never read the raw stream manually
+- Express `json()` middleware runs globally — handlers receive parsed `req.body`
 - Provider proxy must check `req.body` first (Express pre-parsed) before falling back to `readRequestBody()`
 - `WebSocket` must be imported from `ws` package (not global) for Node <22 compatibility
 - `navigator.clipboard` requires optional chaining (unavailable in non-HTTPS contexts)
-- No `process.cwd()` in browser code — Vue composables run client-side only
+- No `process.cwd()` in browser code — React components run client-side only
 - Dynamic `import()` in server routes breaks after tsup bundling — use static imports
 - Check `res.headersSent` before setting status codes in streaming error handlers
+- Zustand stores use `getState()` for cross-store reads (e.g., chat store reads sessions store)
+
+## Test suite
+
+67 tests across 5 files:
+- `tests/auth.test.ts` — Session creation, token validation, cookie parsing
+- `tests/circuit-breaker.test.ts` — State machine, failover, reset behavior
+- `tests/proxy.test.ts` — Protocol translation (Responses ↔ Chat Completions)
+- `tests/server-api.test.ts` — API contract validation (RPC envelope, SSE, rate limiting)
+- `tests/stores.test.ts` — Zustand store behavior (notifications, streaming, state merging)
 
 ## Reference projects
 
-- [codex-mobile](https://github.com/friuns2/codex-mobile) — architectural ancestor (Vue 3 bridge pattern, provider proxy, free mode)
-- [Kanna](https://github.com/jakemor/kanna) — target web UI (React + Zustand + Bun, event-sourced state, Claude/Codex agent coordination)
-- [OpenCode](https://github.com/sst/opencode) — backend SDK (`@opencode-ai/sdk`, Zen API, JS SDK at `packages/sdk/js`)
+- [Kanna](https://github.com/jakemor/kanna) — Frontend architecture reference (React 19 + Zustand 5, WebSocket subscriptions, event-sourced state)
+- [OpenCode](https://github.com/sst/opencode) — Backend SDK (`@opencode-ai/sdk`, Zen API)
