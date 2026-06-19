@@ -1,5 +1,4 @@
 name: Create Release
-
 on:
   workflow_dispatch:
     inputs:
@@ -7,50 +6,15 @@ on:
         description: Tag name
         required: true
         default: v0.1.0
-
 permissions:
   contents: write
-
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Create release
-        run: |
-          gh release create "${{ inputs.tag }}" \
-            --title "${{ inputs.tag }} — Initial consumer-ready release" \
-            --target main \
-            --notes "$(cat <<'NOTES'
-## What's included
-
-### Web app / Self-hosted
-- React 19 + Zustand SPA (Kanna UI) served by Express 5 bridge
-- Zen free tier → OpenRouter free → BYOK failover chain with circuit breaker
-- Multi-tenant auth (password or no-password mode)
-- WebSocket real-time protocol (subscribe/snapshot/command envelopes)
-- Docker + docker-compose for self-hosted VPS deployment
-- PWA installable from Chrome (offline shell, service worker)
-
-### Windows EXE (Electron)
-- Single-instance lock, loading screen, window state persistence
-- No white flash, dark background; navigation guard; error dialog on bridge failure
-- Builds: portable .exe + NSIS installer (pnpm build:win)
-
-### Android APK (Capacitor)
-- Capacitor 6 WebView pointing at your self-hosted OpenCode instance
-- R8 minification + ProGuard rules; targetSdkVersion 35 (Play Store Aug 2025)
-- Set OPENCODE_SERVER_URL=https://your-server.com pnpm build:android
-
-## Quick start
-
-    pnpm install && pnpm build
-    node dist-cli/index.js serve --port 4080 --static-dir dist/
-
-## Test coverage
-149 tests: auth, circuit breaker, proxy, WebSocket protocol, chat, provider config, E2E simulation.
-NOTES
-)"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: gh release create "$TAG" --title "$TAG - Initial consumer-ready release" --target main --generate-notes
