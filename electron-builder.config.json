@@ -1,0 +1,35 @@
+{
+  "appId": "com.opencode.claudecode",
+  "productName": "OpenCode",
+  "main": "electron/main.cjs",
+  "asar": false,
+  "directories": {
+    "output": "dist-electron"
+  },
+  "files": [
+    "electron/**/*",
+    "dist-cli/**/*",
+    "dist/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      { "target": "portable", "arch": ["x64"] },
+      { "target": "nsis", "arch": ["x64"] }
+    ],
+    "icon": "public/icon-512.png"
+  },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": false,
+    "deleteAppDataOnUninstall": true
+  },
+  "mac": {
+    "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+    "icon": "public/icon-512.png"
+  },
+  "linux": {
+    "target": [{ "target": "AppImage", "arch": ["x64"] }],
+    "icon": "public/icon-512.png"
+  }
+}
