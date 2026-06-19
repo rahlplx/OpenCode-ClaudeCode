@@ -189,6 +189,15 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
   app.use(express.json({ limit: "32kb" }));
 
+  // Catch body-parser JSON syntax errors and return JSON instead of HTML
+  app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err instanceof SyntaxError && "body" in err) {
+      res.status(400).json({ error: "Invalid JSON body" });
+      return;
+    }
+    next(err);
+  });
+
   // Kanna auth routes (without /api prefix)
   app.get("/auth/status", (req, res) => {
     if (noPassword) {
@@ -402,6 +411,15 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
       res.sendFile("index.html", { root: options.staticDir });
     });
   }
+
+  // JSON 404 for unmatched API/auth routes — must come after all route definitions
+  app.use((req, res) => {
+    if (req.path.startsWith("/api") || req.path.startsWith("/auth")) {
+      res.status(404).json({ error: "Not found", path: req.path });
+    } else {
+      res.status(404).send("Not found");
+    }
+  });
 
   bridge.on("connected", () => {
     console.log("OpenCode backend connected");
