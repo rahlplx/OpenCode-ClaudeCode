@@ -394,7 +394,11 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
   if (options.staticDir) {
     app.use(express.static(options.staticDir));
-    app.get("*path", (_req, res) => {
+    app.get("*path", (req, res, next) => {
+      if (req.path.startsWith("/api") || req.path.startsWith("/auth") || req.path === "/health") {
+        next();
+        return;
+      }
       res.sendFile("index.html", { root: options.staticDir });
     });
   }
