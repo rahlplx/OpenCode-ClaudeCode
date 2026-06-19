@@ -9,6 +9,7 @@ export default defineConfig({
       "node_modules/**",
       "dist/**",
       "dist-cli/**",
+      "dist-electron/**",
       "src/client/**/*.test.ts",
       "src/client/**/*.test.tsx",
       "src/shared/**/*.test.ts",

@@ -2,6 +2,7 @@
   "name": "opencode-claudecode",
   "version": "0.1.0",
   "description": "AI coding agent using OpenCode backend with Kanna web UI",
+  "main": "electron/main.cjs",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -47,6 +48,42 @@
     "ws": "^8.18.3",
     "zod": "^4.4.3",
     "zustand": "^5.0.10"
+  },
+  "build": {
+    "appId": "com.opencode.claudecode",
+    "productName": "OpenCode",
+    "copyright": "Copyright © 2026 OpenCode-ClaudeCode Contributors",
+    "asar": false,
+    "directories": { "output": "dist-electron" },
+    "files": ["electron/**/*", "dist-cli/**/*", "dist/**/*", "package.json"],
+    "win": {
+      "target": [
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "public/icon-512.png",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OpenCode"
+    },
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "icon": "public/icon-512.png",
+      "category": "public.app-category.developer-tools"
+    },
+    "dmg": { "title": "OpenCode ${version}" },
+    "linux": {
+      "target": [{ "target": "AppImage", "arch": ["x64"] }],
+      "icon": "public/icon-512.png",
+      "category": "Development"
+    }
   },
   "pnpm": {
     "onlyBuiltDependencies": [
