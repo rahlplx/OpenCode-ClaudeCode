@@ -189,6 +189,18 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
   app.use(express.json({ limit: "32kb" }));
 
+  // Catch all body-parser errors (SyntaxError, 413 Payload Too Large, etc.) and return JSON
+  app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err) {
+      const error = err as { status?: number; statusCode?: number; message?: string };
+      const status = error.status || error.statusCode || 400;
+      const message = err instanceof SyntaxError && "body" in err ? "Invalid JSON body" : (error.message || "Invalid request");
+      res.status(status).json({ error: message });
+      return;
+    }
+    next(err);
+  });
+
   // Kanna auth routes (without /api prefix)
   app.get("/auth/status", (req, res) => {
     if (noPassword) {
@@ -395,13 +407,24 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
   if (options.staticDir) {
     app.use(express.static(options.staticDir));
     app.get("*path", (req, res, next) => {
-      if (req.path.startsWith("/api") || req.path.startsWith("/auth") || req.path === "/health") {
+      const isApiOrAuth = req.path === "/api" || req.path.startsWith("/api/") || req.path === "/auth" || req.path.startsWith("/auth/");
+      if (isApiOrAuth || req.path === "/health") {
         next();
         return;
       }
       res.sendFile("index.html", { root: options.staticDir });
     });
   }
+
+  // JSON 404 for unmatched API/auth routes — must come after all route definitions
+  app.use((req, res) => {
+    const isApiOrAuth = req.path === "/api" || req.path.startsWith("/api/") || req.path === "/auth" || req.path.startsWith("/auth/");
+    if (isApiOrAuth) {
+      res.status(404).json({ error: "Not found", path: req.path });
+    } else {
+      res.status(404).send("Not found");
+    }
+  });
 
   bridge.on("connected", () => {
     console.log("OpenCode backend connected");
