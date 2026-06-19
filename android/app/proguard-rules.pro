@@ -11,6 +11,10 @@
 }
 -keep public class * extends com.getcapacitor.Plugin { *; }
 
+# ── Cordova plugins ───────────────────────────────────────────────────────────
+-keep class org.apache.cordova.** { *; }
+-keep public class * extends org.apache.cordova.CordovaPlugin { *; }
+
 # ── App entry point ───────────────────────────────────────────────────────────
 -keep class com.opencode.claudecode.MainActivity { *; }
 

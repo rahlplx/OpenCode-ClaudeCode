@@ -7,7 +7,7 @@ const serverUrl = process.env.OPENCODE_SERVER_URL;
 const config: CapacitorConfig = {
   appId: 'com.opencode.claudecode',
   appName: 'OpenCode',
-  webDir: serverUrl ? 'dist' : 'android-no-server',
+  webDir: 'android-no-server',
   server: serverUrl
     ? {
         url: serverUrl,
