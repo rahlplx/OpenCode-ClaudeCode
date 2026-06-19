@@ -1,0 +1,49 @@
+{
+  "name": "opencode-claudecode",
+  "version": "0.1.0",
+  "description": "AI coding agent using OpenCode backend with Claude Code-style web UI",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "opencode-cc": "./dist-cli/index.js"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "build:cli": "tsup",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "latest",
+    "commander": "^13.1.0",
+    "express": "^5.1.0",
+    "highlight.js": "^11.11.0",
+    "markdown-it": "^14.1.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.6.0",
+    "ws": "^8.18.3",
+    "xterm": "^5.5.0",
+    "xterm-addon-fit": "^0.10.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/express": "^5.0.0",
+    "@types/markdown-it": "^14.1.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "tailwindcss": "^4.1.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.1.0",
+    "vitest": "^3.0.0",
+    "vue-tsc": "^2.2.0"
+  }
+}
