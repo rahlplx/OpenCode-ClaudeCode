@@ -1,6 +1,7 @@
 import { WebSocket } from "ws";
 import { mkdirSync } from "fs";
 import { homedir } from "os";
+import { basename } from "path";
 import type { IncomingMessage } from "http";
 import type {
   ClientEnvelope,
@@ -318,6 +319,10 @@ function handleCommand(client: KannaClient, id: string, command: ClientCommand):
       break;
     case "project.create": {
       const cmd = command as unknown as { type: string; localPath: string; title: string };
+      if (typeof cmd.localPath !== "string") {
+        sendEnvelope(client.ws, { v: 1, type: "error", id, message: "Invalid or missing localPath" });
+        break;
+      }
       const resolvedPath = resolveTilde(cmd.localPath);
       try {
         mkdirSync(resolvedPath, { recursive: true });
@@ -332,7 +337,7 @@ function handleCommand(client: KannaClient, id: string, command: ClientCommand):
       if (!existing) {
         defaultLocalProjects.projects.unshift({
           localPath: resolvedPath,
-          title: cmd.title || resolvedPath.split("/").pop() || resolvedPath,
+          title: cmd.title || basename(resolvedPath) || resolvedPath,
           source: "saved",
           lastOpenedAt: Date.now(),
           chatCount: 0,
@@ -344,12 +349,16 @@ function handleCommand(client: KannaClient, id: string, command: ClientCommand):
     }
     case "project.open": {
       const cmd = command as unknown as { type: string; localPath: string };
+      if (typeof cmd.localPath !== "string") {
+        sendEnvelope(client.ws, { v: 1, type: "error", id, message: "Invalid or missing localPath" });
+        break;
+      }
       const resolvedPath = resolveTilde(cmd.localPath);
       let project = defaultLocalProjects.projects.find((p) => p.localPath === resolvedPath);
       if (!project) {
         project = {
           localPath: resolvedPath,
-          title: resolvedPath.split("/").pop() || resolvedPath,
+          title: basename(resolvedPath) || resolvedPath,
           source: "discovered",
           lastOpenedAt: Date.now(),
           chatCount: 0,

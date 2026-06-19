@@ -150,10 +150,7 @@ export class ProviderConfigManager {
     const serverProvider = this.mapKannaProvider(config.provider);
 
     if (serverProvider === "zen") {
-      if (!config.apiKey) {
-        return { ok: true, error: null }; // public token fallback still works
-      }
-      return { ok: true, error: null };
+      return { ok: true, error: null }; // public token fallback works even without a key
     }
 
     if (serverProvider === "openrouter") {
