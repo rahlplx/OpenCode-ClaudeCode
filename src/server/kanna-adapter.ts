@@ -6,10 +6,11 @@ import type {
   SubscriptionTopic,
   ClientCommand,
 } from "../shared/protocol.js";
-import type { SidebarData, ChatSnapshot, AppSettingsSnapshot, KeybindingsSnapshot, UpdateSnapshot, LocalProjectsSnapshot, LlmProviderKind } from "../shared/types.js";
+import type { SidebarData, ChatSnapshot, AppSettingsSnapshot, KeybindingsSnapshot, UpdateSnapshot, LocalProjectsSnapshot, LlmProviderKind, AgentProvider } from "../shared/types.js";
 import { isClientEnvelope } from "../shared/protocol.js";
 import { parseCookies, getUserIdFromToken, COOKIE_NAME } from "./auth.js";
 import { ProviderConfigManager } from "./provider-config.js";
+import { ChatSessionManager } from "./chat-session-manager.js";
 
 interface SubscriptionState {
   id: string;
@@ -25,6 +26,7 @@ interface KannaClient {
 const clients = new Map<WebSocket, KannaClient>();
 
 export const providerConfigManager = new ProviderConfigManager();
+export const chatSessionManager = new ChatSessionManager();
 
 const sidebarState: SidebarData = { projectGroups: [] };
 
@@ -100,16 +102,18 @@ function sendEnvelope(ws: WebSocket, envelope: ServerEnvelope): void {
   }
 }
 
-function sendSnapshot(ws: WebSocket, id: string, topic: SubscriptionTopic): void {
+function sendSnapshot(ws: WebSocket, id: string, topic: SubscriptionTopic, userId?: string): void {
   switch (topic.type) {
-    case "sidebar":
+    case "sidebar": {
+      const data = userId ? chatSessionManager.getSidebarData(userId) : sidebarState;
       sendEnvelope(ws, {
         v: 1,
         type: "snapshot",
         id,
-        snapshot: { type: "sidebar", data: sidebarState },
+        snapshot: { type: "sidebar", data },
       });
       break;
+    }
     case "app-settings":
       sendEnvelope(ws, {
         v: 1,
@@ -142,14 +146,16 @@ function sendSnapshot(ws: WebSocket, id: string, topic: SubscriptionTopic): void
         snapshot: { type: "local-projects", data: defaultLocalProjects },
       });
       break;
-    case "chat":
+    case "chat": {
+      const chatData = chatSessionManager.getChat(topic.chatId);
       sendEnvelope(ws, {
         v: 1,
         type: "snapshot",
         id,
-        snapshot: { type: "chat", data: null },
+        snapshot: { type: "chat", data: chatData },
       });
       break;
+    }
     case "project-git":
       sendEnvelope(ws, {
         v: 1,
@@ -235,7 +241,72 @@ function handleCommand(client: KannaClient, id: string, command: ClientCommand):
       });
       break;
     }
+    case "chat.create": {
+      const snapshot = chatSessionManager.createChat(command.projectId, client.userId);
+      sendEnvelope(client.ws, { v: 1, type: "ack", id, result: snapshot });
+      updateSidebarForUser(client);
+      broadcastChatSnapshot(client, snapshot.runtime.chatId);
+      break;
+    }
+    case "chat.send": {
+      const chatId = command.chatId;
+      if (chatId && !chatSessionManager.canAccess(chatId, client.userId)) {
+        sendEnvelope(client.ws, { v: 1, type: "error", id, message: "Access denied" });
+        break;
+      }
+      let targetChatId = chatId;
+      if (!targetChatId && command.projectId) {
+        const newChat = chatSessionManager.createChat(command.projectId, client.userId);
+        targetChatId = newChat.runtime.chatId;
+        updateSidebarForUser(client);
+      }
+      if (!targetChatId) {
+        sendEnvelope(client.ws, { v: 1, type: "error", id, message: "No chat or project specified" });
+        break;
+      }
+      const provider = (command.provider as AgentProvider) || "claude";
+      const model = command.model || "claude-sonnet-4-6";
+      chatSessionManager.addUserMessage(targetChatId, command.content, provider, model);
+      sendEnvelope(client.ws, { v: 1, type: "ack", id });
+      broadcastChatSnapshot(client, targetChatId);
+      handleChatRequest(client, targetChatId, command.content, provider, model);
+      break;
+    }
+    case "chat.cancel": {
+      if (!chatSessionManager.canAccess(command.chatId, client.userId)) {
+        sendEnvelope(client.ws, { v: 1, type: "error", id, message: "Access denied" });
+        break;
+      }
+      chatSessionManager.cancelChat(command.chatId);
+      sendEnvelope(client.ws, { v: 1, type: "ack", id });
+      broadcastChatSnapshot(client, command.chatId);
+      break;
+    }
+    case "chat.rename": {
+      if (!chatSessionManager.canAccess(command.chatId, client.userId)) {
+        sendEnvelope(client.ws, { v: 1, type: "error", id, message: "Access denied" });
+        break;
+      }
+      chatSessionManager.renameChat(command.chatId, command.title);
+      sendEnvelope(client.ws, { v: 1, type: "ack", id });
+      updateSidebarForUser(client);
+      break;
+    }
+    case "chat.delete": {
+      if (!chatSessionManager.canAccess(command.chatId, client.userId)) {
+        sendEnvelope(client.ws, { v: 1, type: "error", id, message: "Access denied" });
+        break;
+      }
+      chatSessionManager.deleteChat(command.chatId);
+      sendEnvelope(client.ws, { v: 1, type: "ack", id });
+      updateSidebarForUser(client);
+      break;
+    }
+    case "chat.archive":
+    case "chat.unarchive":
+    case "chat.markRead":
     case "chat.setDraftProtection":
+    case "chat.fork":
       sendEnvelope(client.ws, { v: 1, type: "ack", id });
       break;
     default:
@@ -261,6 +332,107 @@ function broadcastToSubscribers(topicType: string, snapshot: { type: string; dat
         });
       }
     }
+  }
+}
+
+function broadcastChatSnapshot(client: KannaClient, chatId: string): void {
+  const snapshot = chatSessionManager.getChat(chatId);
+  for (const c of clients.values()) {
+    if (c.userId !== client.userId) continue;
+    for (const [subId, sub] of c.subscriptions) {
+      if (sub.topic.type === "chat" && sub.topic.chatId === chatId) {
+        sendEnvelope(c.ws, {
+          v: 1,
+          type: "snapshot",
+          id: subId,
+          snapshot: { type: "chat", data: snapshot },
+        });
+      }
+    }
+  }
+}
+
+function updateSidebarForUser(client: KannaClient): void {
+  const sidebarData = chatSessionManager.getSidebarData(client.userId);
+  for (const c of clients.values()) {
+    if (c.userId !== client.userId) continue;
+    for (const [subId, sub] of c.subscriptions) {
+      if (sub.topic.type === "sidebar") {
+        sendEnvelope(c.ws, {
+          v: 1,
+          type: "snapshot",
+          id: subId,
+          snapshot: { type: "sidebar", data: sidebarData },
+        });
+      }
+    }
+  }
+}
+
+async function handleChatRequest(
+  client: KannaClient,
+  chatId: string,
+  content: string,
+  provider: AgentProvider,
+  model: string,
+): Promise<void> {
+  const activeConfig = providerConfigManager.getActiveConfig();
+  const chain = providerConfigManager.getFailoverChain();
+  const proxyEntry = providerConfigManager.getProxyEntry(chain[0]);
+
+  if (!proxyEntry) {
+    chatSessionManager.addAssistantText(chatId, "No provider available. Configure a provider in Settings → LLM Provider.");
+    chatSessionManager.completeChat(chatId, 0);
+    broadcastChatSnapshot(client, chatId);
+    return;
+  }
+
+  const startTime = Date.now();
+
+  try {
+    const chatMessages = [
+      { role: "user" as const, content },
+    ];
+
+    const requestBody = {
+      model: model || activeConfig.model,
+      messages: chatMessages,
+      stream: false,
+    };
+
+    const headers = proxyEntry.buildHeaders(proxyEntry.apiKey);
+    const url = proxyEntry.chatUrl;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(120_000),
+    });
+
+    if (!res.ok) {
+      const errorText = `Provider returned ${res.status}`;
+      chatSessionManager.addAssistantText(chatId, errorText);
+      chatSessionManager.completeChat(chatId, Date.now() - startTime);
+      broadcastChatSnapshot(client, chatId);
+      return;
+    }
+
+    const json = await res.json() as Record<string, unknown>;
+    const choices = (json.choices as Array<Record<string, unknown>>) || [];
+    const firstChoice = choices[0];
+    const message = firstChoice?.message as Record<string, unknown> | undefined;
+    const responseText = (message?.content as string) || "No response from provider.";
+
+    chatSessionManager.addAssistantText(chatId, responseText);
+    chatSessionManager.completeChat(chatId, Date.now() - startTime);
+    broadcastChatSnapshot(client, chatId);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
+    console.error("Chat request failed:", errorMsg);
+    chatSessionManager.addAssistantText(chatId, `Error: ${errorMsg}`);
+    chatSessionManager.completeChat(chatId, Date.now() - startTime);
+    broadcastChatSnapshot(client, chatId);
   }
 }
 
@@ -298,7 +470,7 @@ export function handleKannaConnection(ws: WebSocket, req: IncomingMessage, noPas
           id: envelope.id,
           topic: envelope.topic,
         });
-        sendSnapshot(ws, envelope.id, envelope.topic);
+        sendSnapshot(ws, envelope.id, envelope.topic, client.userId);
         break;
       }
       case "unsubscribe": {
