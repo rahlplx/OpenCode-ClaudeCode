@@ -4,9 +4,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import { OpenCodeBridge } from "./bridge.js";
 import { handleProviderProxy, circuitBreaker } from "./proxy.js";
 import { handleLogin, requireAuth, generatePassword, getUserFromRequest, parseCookies, getUserIdFromToken, COOKIE_NAME } from "./auth.js";
-import { handleKannaConnection } from "./kanna-adapter.js";
-import { getZenConfig, buildZenHeaders, getZenModels } from "../providers/zen.js";
-import { getOpenRouterConfig, fetchFreeModels } from "../providers/openrouter.js";
+import { handleKannaConnection, providerConfigManager } from "./kanna-adapter.js";
+import { getZenModels } from "../providers/zen.js";
+import { fetchFreeModels } from "../providers/openrouter.js";
 import type { ProviderType, Notification, Model } from "../types/index.js";
 
 interface ServerOptions {
@@ -334,42 +334,21 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
     }
   });
 
-  const proxyConfig = {
-    providers: {
-      zen: {
-        responsesUrl: "https://opencode.ai/zen/v1/responses",
-        chatUrl: "https://opencode.ai/zen/v1/chat/completions",
-        apiKey: getZenConfig().apiKey,
-        wireApi: "chat" as const,
-        buildHeaders: buildZenHeaders,
-      },
-      openrouter: {
-        responsesUrl: "https://openrouter.ai/api/v1/responses",
-        chatUrl: "https://openrouter.ai/api/v1/chat/completions",
-        apiKey: getOpenRouterConfig().apiKey,
-        wireApi: "responses" as const,
-        buildHeaders: (token: string) => ({
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://github.com/opencode-claudecode",
-          "X-Title": "OpenCode-ClaudeCode",
-        }),
-      },
-      custom: {
-        responsesUrl: "",
-        chatUrl: "",
-        apiKey: undefined,
-        wireApi: "chat" as const,
-        buildHeaders: (token: string) => ({
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        }),
-      },
-    },
-  };
+  function buildProxyConfig() {
+    const providers: Record<string, ReturnType<typeof providerConfigManager.getProxyEntry>> = {};
+    for (const p of (["zen", "openrouter", "custom"] as ProviderType[])) {
+      providers[p] = providerConfigManager.getProxyEntry(p);
+    }
+    return {
+      providers: Object.fromEntries(
+        Object.entries(providers).filter(([, v]) => v !== null),
+      ) as Record<ProviderType, NonNullable<ReturnType<typeof providerConfigManager.getProxyEntry>>>,
+    };
+  }
 
   app.post("/api/proxy/:provider/v1/responses", (req, res) => {
     const provider = req.params.provider as ProviderType;
+    const proxyConfig = buildProxyConfig();
     handleProviderProxy(req, res, provider, proxyConfig);
   });
 

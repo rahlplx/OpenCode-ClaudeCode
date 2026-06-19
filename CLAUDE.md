@@ -104,12 +104,13 @@ Legacy routes remain at `/api/auth/login`, `/api/auth/logout`.
 
 ## Test suite
 
-63 tests across 5 files:
+86 tests across 6 files:
 - `tests/auth.test.ts` — Session creation, token validation, cookie parsing
 - `tests/circuit-breaker.test.ts` — State machine, failover, reset behavior
 - `tests/proxy.test.ts` — Protocol translation (Responses ↔ Chat Completions)
 - `tests/server-api.test.ts` — API contract validation (RPC envelope, SSE, rate limiting)
 - `tests/stores.test.ts` — Kanna Zustand store behavior (appSettings, chatInput, chatSoundPreferences, terminalPreferences, diffCommit)
+- `tests/provider-config.test.ts` — ProviderConfigManager: BYOK config, Kanna↔server provider mapping, proxy entry generation, failover chain, validation
 
 ## Reference projects
 

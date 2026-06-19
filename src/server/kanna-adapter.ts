@@ -6,9 +6,10 @@ import type {
   SubscriptionTopic,
   ClientCommand,
 } from "../shared/protocol.js";
-import type { SidebarData, ChatSnapshot, AppSettingsSnapshot, KeybindingsSnapshot, UpdateSnapshot, LocalProjectsSnapshot } from "../shared/types.js";
+import type { SidebarData, ChatSnapshot, AppSettingsSnapshot, KeybindingsSnapshot, UpdateSnapshot, LocalProjectsSnapshot, LlmProviderKind } from "../shared/types.js";
 import { isClientEnvelope } from "../shared/protocol.js";
 import { parseCookies, getUserIdFromToken, COOKIE_NAME } from "./auth.js";
+import { ProviderConfigManager } from "./provider-config.js";
 
 interface SubscriptionState {
   id: string;
@@ -22,6 +23,8 @@ interface KannaClient {
 }
 
 const clients = new Map<WebSocket, KannaClient>();
+
+export const providerConfigManager = new ProviderConfigManager();
 
 const sidebarState: SidebarData = { projectGroups: [] };
 
@@ -190,43 +193,39 @@ function handleCommand(client: KannaClient, id: string, command: ClientCommand):
         v: 1,
         type: "ack",
         id,
-        result: {
-          provider: "custom",
-          apiKey: "",
-          model: "",
-          baseUrl: "",
-          resolvedBaseUrl: "",
-          enabled: false,
-          warning: null,
-          filePathDisplay: "~/.opencode/llm-provider.json",
-        },
+        result: providerConfigManager.getSnapshot(),
       });
       break;
-    case "settings.writeLlmProvider":
+    case "settings.writeLlmProvider": {
+      const snapshot = providerConfigManager.writeLlmProvider({
+        provider: command.provider as LlmProviderKind,
+        apiKey: command.apiKey,
+        model: command.model,
+        baseUrl: command.baseUrl,
+      });
       sendEnvelope(client.ws, {
         v: 1,
         type: "ack",
         id,
-        result: {
-          provider: command.provider,
-          apiKey: command.apiKey,
-          model: command.model,
-          baseUrl: command.baseUrl,
-          resolvedBaseUrl: command.baseUrl,
-          enabled: true,
-          warning: null,
-          filePathDisplay: "~/.opencode/llm-provider.json",
-        },
+        result: snapshot,
       });
       break;
-    case "settings.validateLlmProvider":
+    }
+    case "settings.validateLlmProvider": {
+      const validation = providerConfigManager.validateLlmProvider({
+        provider: command.provider as LlmProviderKind,
+        apiKey: command.apiKey,
+        model: command.model,
+        baseUrl: command.baseUrl,
+      });
       sendEnvelope(client.ws, {
         v: 1,
         type: "ack",
         id,
-        result: { ok: true, error: null },
+        result: validation,
       });
       break;
+    }
     case "chat.setDraftProtection":
       sendEnvelope(client.ws, { v: 1, type: "ack", id });
       break;
