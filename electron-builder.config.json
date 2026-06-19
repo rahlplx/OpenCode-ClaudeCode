@@ -2,6 +2,7 @@
   "appId": "com.opencode.claudecode",
   "productName": "OpenCode",
   "main": "electron/main.cjs",
+  "asar": false,
   "directories": {
     "output": "dist-electron"
   },
