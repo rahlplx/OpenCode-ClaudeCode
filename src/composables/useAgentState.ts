@@ -234,7 +234,7 @@ export function useAgentState() {
     const optimistic: Session = {
       id: optimisticId,
       title: "New Session",
-      projectPath: projectPath || process.cwd?.() || "/",
+      projectPath: projectPath || "/",
       modelId: currentModel.value,
       createdAt: Date.now(),
       updatedAt: Date.now(),

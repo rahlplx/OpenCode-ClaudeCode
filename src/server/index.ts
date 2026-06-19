@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { OpenCodeBridge } from "./bridge.js";
 import { handleProviderProxy } from "./proxy.js";
 import { handleLogin, requireAuth, generatePassword } from "./auth.js";
-import { getZenConfig, buildZenHeaders } from "../providers/zen.js";
+import { getZenConfig, buildZenHeaders, getZenModels } from "../providers/zen.js";
 import { getOpenRouterConfig, fetchFreeModels } from "../providers/openrouter.js";
 import type { ProviderType, Notification, Model } from "../types/index.js";
 
@@ -106,23 +106,27 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
         res.json({ jsonrpc: "2.0", id: 1, result });
       }
     } catch (err) {
-      res.status(500).json({
-        jsonrpc: "2.0",
-        id: 1,
-        error: {
-          code: -32603,
-          message: err instanceof Error ? err.message : String(err),
-        },
-      });
+      const message = err instanceof Error ? err.message : String(err);
+      if (res.headersSent) {
+        res.write(`data: ${JSON.stringify({ type: "error", data: { message } })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({
+          jsonrpc: "2.0",
+          id: 1,
+          error: {
+            code: -32603,
+            message,
+          },
+        });
+      }
     }
   });
 
   app.get("/api/models", async (_req, res) => {
     try {
       const [zenModels, freeModels] = await Promise.allSettled([
-        Promise.resolve(
-          (await import("../providers/zen.js")).getZenModels(),
-        ),
+        Promise.resolve(getZenModels()),
         fetchFreeModels(),
       ]);
 

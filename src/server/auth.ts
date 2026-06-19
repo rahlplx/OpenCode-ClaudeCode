@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from "crypto";
+import { randomBytes, timingSafeEqual, createHash } from "crypto";
 import type { IncomingMessage, ServerResponse } from "http";
 
 const COOKIE_NAME = "occ_session_token";
@@ -32,10 +32,9 @@ function isValidSession(token: string): boolean {
 }
 
 function constantTimeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  return timingSafeEqual(bufA, bufB);
+  const hashA = createHash("sha256").update(a).digest();
+  const hashB = createHash("sha256").update(b).digest();
+  return timingSafeEqual(hashA, hashB);
 }
 
 export function handleLogin(
@@ -43,6 +42,33 @@ export function handleLogin(
   res: ServerResponse,
   password: string,
 ): void {
+  const processLogin = (submitted: string) => {
+    if (!constantTimeCompare(submitted, password)) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid password" }));
+      return;
+    }
+
+    const token = createSession();
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Set-Cookie": `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL / 1000}`,
+    });
+    res.end(JSON.stringify({ success: true }));
+  };
+
+  const expressReq = req as IncomingMessage & { body?: { password?: string } };
+  if (expressReq.body && typeof expressReq.body === "object") {
+    const submitted = expressReq.body.password;
+    if (typeof submitted !== "string") {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid request" }));
+      return;
+    }
+    processLogin(submitted);
+    return;
+  }
+
   let body = "";
   req.on("data", (chunk: Buffer) => {
     body += chunk.toString();
@@ -52,19 +78,12 @@ export function handleLogin(
       const { password: submitted } = JSON.parse(body) as {
         password: string;
       };
-
-      if (!constantTimeCompare(submitted, password)) {
-        res.writeHead(401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Invalid password" }));
+      if (typeof submitted !== "string") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Invalid request" }));
         return;
       }
-
-      const token = createSession();
-      res.writeHead(200, {
-        "Content-Type": "application/json",
-        "Set-Cookie": `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL / 1000}`,
-      });
-      res.end(JSON.stringify({ success: true }));
+      processLogin(submitted);
     } catch {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Invalid request" }));

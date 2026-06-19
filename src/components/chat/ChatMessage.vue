@@ -11,7 +11,7 @@ const isAssistant = computed(() => props.message.role === "assistant");
 const isTool = computed(() => props.message.role === "tool");
 
 const codeBlocks = computed(() => {
-  const content = props.message.content;
+  const content = props.message.content || "";
   const blocks: Array<{ type: "text" | "code"; content: string; language?: string }> = [];
   const regex = /```(\w*)\n([\s\S]*?)```/g;
   let lastIndex = 0;
@@ -33,7 +33,9 @@ const codeBlocks = computed(() => {
 });
 
 function copyCode(code: string): void {
-  navigator.clipboard.writeText(code);
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(code);
+  }
 }
 </script>
 

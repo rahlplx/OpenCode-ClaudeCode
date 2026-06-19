@@ -1,4 +1,5 @@
 import { EventEmitter } from "events";
+import { WebSocket } from "ws";
 import type { Notification, JsonRpcRequest, JsonRpcResponse } from "@/types";
 
 let rpcIdCounter = 0;
@@ -51,6 +52,7 @@ export class OpenCodeBridge extends EventEmitter {
       this.emit("connected");
     } catch (err) {
       this.emit("error", new Error(`Failed to start OpenCode: ${err}`));
+      throw err;
     }
   }
 

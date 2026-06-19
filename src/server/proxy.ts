@@ -212,14 +212,19 @@ export async function handleProviderProxy(
     return;
   }
 
-  const body = await readRequestBody(req);
   let parsedBody: Record<string, unknown>;
-  try {
-    parsedBody = JSON.parse(body);
-  } catch {
-    res.writeHead(400, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Invalid JSON body" }));
-    return;
+  const expressReq = req as IncomingMessage & { body?: Record<string, unknown> };
+  if (expressReq.body && typeof expressReq.body === "object") {
+    parsedBody = expressReq.body;
+  } else {
+    const body = await readRequestBody(req);
+    try {
+      parsedBody = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid JSON body" }));
+      return;
+    }
   }
 
   const apiKey = provider.apiKey;
