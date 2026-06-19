@@ -11,11 +11,10 @@ const config: CapacitorConfig = {
   server: serverUrl
     ? {
         url: serverUrl,
-        cleartext: true, // Allow HTTP for local-network servers (http://)
+        // Only allow cleartext (HTTP) if the URL is explicitly http://
+        cleartext: serverUrl.startsWith('http://'),
       }
-    : {
-        cleartext: true,
-      },
+    : undefined,
 };
 
 export default config;
