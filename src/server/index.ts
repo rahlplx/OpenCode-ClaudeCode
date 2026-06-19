@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { OpenCodeBridge } from "./bridge.js";
 import { handleProviderProxy, circuitBreaker } from "./proxy.js";
 import { handleLogin, requireAuth, generatePassword, getUserFromRequest, parseCookies, getUserIdFromToken, COOKIE_NAME } from "./auth.js";
+import { handleKannaConnection } from "./kanna-adapter.js";
 import { getZenConfig, buildZenHeaders, getZenModels } from "../providers/zen.js";
 import { getOpenRouterConfig, fetchFreeModels } from "../providers/openrouter.js";
 import type { ProviderType, Notification, Model } from "../types/index.js";
@@ -25,7 +26,26 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
   const app = express();
   const server = createServer(app);
-  const wss = new WebSocketServer({ server, path: "/api/ws" });
+
+  // Kanna WebSocket at /ws
+  const kannaWss = new WebSocketServer({ noServer: true });
+  // Legacy WebSocket at /api/ws
+  const legacyWss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (req, socket, head) => {
+    const url = req.url || "";
+    if (url === "/ws" || url.startsWith("/ws?")) {
+      kannaWss.handleUpgrade(req, socket, head, (ws) => {
+        kannaWss.emit("connection", ws, req);
+      });
+    } else if (url === "/api/ws" || url.startsWith("/api/ws?")) {
+      legacyWss.handleUpgrade(req, socket, head, (ws) => {
+        legacyWss.emit("connection", ws, req);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
 
   // Security headers
   app.use((_req, res, next) => {
@@ -125,7 +145,13 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
     }
   }
 
-  wss.on("connection", (ws, req) => {
+  // Kanna WebSocket handler
+  kannaWss.on("connection", (ws, req) => {
+    handleKannaConnection(ws, req, noPassword);
+  });
+
+  // Legacy WebSocket handler
+  legacyWss.on("connection", (ws, req) => {
     const cookies = parseCookies(req.headers.cookie || "");
     const token = cookies[COOKIE_NAME];
     const userId = noPassword ? "default" : getUserIdFromToken(token);
@@ -150,6 +176,33 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
   app.use(express.json({ limit: "32kb" }));
 
+  // Kanna auth routes (without /api prefix)
+  app.get("/auth/status", (req, res) => {
+    if (noPassword) {
+      res.json({ enabled: false, authenticated: true });
+      return;
+    }
+    const cookies = parseCookies(req.headers.cookie || "");
+    const token = cookies[COOKIE_NAME];
+    const userId = getUserIdFromToken(token);
+    res.json({ enabled: true, authenticated: Boolean(userId) });
+  });
+
+  app.post("/auth/login", (req, res) => {
+    handleLogin(req, res, password);
+  });
+
+  app.post("/auth/logout", (_req, res) => {
+    res.setHeader("Set-Cookie", `${COOKIE_NAME}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
+    res.json({ success: true });
+  });
+
+  // Health endpoint (Kanna expects /health without /api prefix too)
+  app.get("/health", (_req, res) => {
+    res.json({ status: "ok" });
+  });
+
+  // Legacy API auth
   app.post("/api/auth/login", (req, res) => {
     handleLogin(req, res, password);
   });

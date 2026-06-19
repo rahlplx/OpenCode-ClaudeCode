@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 pnpm install              # Install dependencies
-pnpm dev                  # Vite dev server on :5173, proxies /api to bridge at :4080
+pnpm dev                  # Vite dev server on :5173, proxies /api+/ws+/auth to bridge at :4080
 pnpm build                # tsc type-check + vite build → dist/
 pnpm build:cli            # tsup bundle → dist-cli/ (CLI entry with shebang)
 pnpm preview              # Serve production build locally
@@ -20,31 +20,47 @@ node dist-cli/index.js serve --port 4080 --static-dir dist/
 
 ## Architecture
 
-Three-tier bridge: **React 19 SPA → Express bridge server → OpenCode process + provider proxy**.
+Three-tier bridge: **Kanna React SPA → Express bridge server → OpenCode process + provider proxy**.
 
-### Frontend (React 19 + Zustand)
+### Frontend — Kanna (verbatim)
 
-Built in Kanna's architecture pattern. Entry point: `src/main.tsx` → `src/client/app/App.tsx`.
+Kanna's entire frontend is copied verbatim from [jakemor/kanna](https://github.com/jakemor/kanna). **Do not modify Kanna UI components** — only add responsive CSS or wire protocol adapters.
 
-**Zustand stores** (`src/client/stores/`):
-- `connection.ts` — WebSocket lifecycle with exponential backoff reconnection
-- `sessions.ts` — Session CRUD with optimistic creation and rollback
-- `chat.ts` — Messages, streaming deltas, tool approvals, provider selection, notification handling
+Entry point: `src/main.tsx` → `src/client/app/App.tsx`.
 
-**Components** (`src/client/components/`):
-- `layout/MainLayout.tsx` — App shell with sidebar toggle, provider selector, connection indicator
-- `sidebar/Sidebar.tsx` — Session list grouped by project
-- `chat/ChatPanel.tsx` — Message thread, input, approval queue, error banner
-- `chat/ChatMessage.tsx` — Code block parsing, copy-to-clipboard
-- `chat/ApprovalDialog.tsx` — Tool request approve/deny
+**State management** (`src/client/app/useKannaState.ts`): ~2100-line composable that owns all app state — sidebar, chat, settings, terminals. Connects to `KannaSocket` for real-time updates.
 
-**API client** (`src/client/api.ts`): RPC over HTTP + SSE streaming. Replaces the old Vue gateway.
+**KannaSocket** (`src/client/app/socket.ts`): WebSocket client with auto-reconnect (750ms initial, 5s max), 15s heartbeat, 25s stale detection. Speaks the subscribe/snapshot/command envelope protocol.
+
+**Zustand stores** (`src/client/stores/`): 8 stores — appSettings, chatInput, chatPreferences, chatSoundPreferences, diffCommit, rightSidebar, terminalLayout, terminalPreferences.
+
+**Shared types** (`src/shared/`): 12 files copied from Kanna — `types.ts` (1094 lines), `protocol.ts` (ClientEnvelope/ServerEnvelope/ClientCommand/SubscriptionTopic), `branding.ts`, `ports.ts`, etc.
+
+### WebSocket protocol
+
+Kanna uses a typed envelope protocol at `/ws`:
+- **Client → Server**: `subscribe` (topic), `unsubscribe`, `command` (80+ command types)
+- **Server → Client**: `snapshot` (state), `event` (delta), `ack` (command response), `error`
+- **Topics**: sidebar, app-settings, keybindings, update, local-projects, chat, project-git, terminal
+
+### Protocol adapter
+
+`src/server/kanna-adapter.ts` bridges Kanna's WebSocket protocol to our Express backend. Handles subscription management, default snapshots, and command routing. Currently provides defaults for most topics — chat commands need wiring to the OpenCode bridge.
 
 ### Backend flow
 
-`src/server/index.ts` boots Express 5 + WebSocketServer. The `OpenCodeBridge` class (`bridge.ts`) spawns OpenCode via `@opencode-ai/sdk`'s `createOpencodeServer()` on port 4096 and communicates via JSON-RPC 2.0 over HTTP. If OpenCode isn't available, the server runs in proxy-only mode.
+`src/server/index.ts` boots Express 5 + WebSocketServer with `noServer: true` upgrade handling for both `/ws` (Kanna) and `/api/ws` (legacy).
 
-All `/api/rpc` POST requests forward to the bridge. When `Accept: text/event-stream`, the bridge uses `rpcStream()` which reads SSE chunks from OpenCode and simultaneously writes deltas to the HTTP response and broadcasts via WebSocket to all connected clients.
+The `OpenCodeBridge` class (`bridge.ts`) spawns OpenCode via `@opencode-ai/sdk`'s `createOpencodeServer()` on port 4096 and communicates via JSON-RPC 2.0 over HTTP.
+
+### Auth routes
+
+Kanna expects auth at top-level paths (no `/api` prefix):
+- `GET /auth/status` → `{ enabled, authenticated }`
+- `POST /auth/login` → sets cookie, returns `{ ok }`
+- `POST /auth/logout` → clears cookie
+
+Legacy routes remain at `/api/auth/login`, `/api/auth/logout`.
 
 ### Multi-tenant isolation
 
@@ -52,23 +68,27 @@ All `/api/rpc` POST requests forward to the bridge. When `Accept: text/event-str
 - Session/request ownership tracking prevents cross-user access
 - Login derives deterministic userId from password hash (SHA-256 first 8 hex chars)
 - WebSocket auth checks cookie on upgrade
-- Session list filtered by ownership
 
 ### Provider proxy layer
 
 `src/server/proxy.ts` implements bidirectional **Responses API ↔ Chat Completions API** protocol translation with circuit breaker failover.
 
-**Failover chain**: Zen (free) → OpenRouter `:free` models → Custom (BYOK). Circuit breaker trips after 3 failures, resets after 60s. 429/5xx triggers automatic failover to next provider.
-
-### Auth
-
-`src/server/auth.ts` uses SHA-256 hashed `timingSafeEqual` for password comparison. Sessions use HttpOnly cookies (`occ_session_token`) with 24h TTL. Rate limiting: 100 req/min per IP with periodic cleanup.
+**Failover chain**: Zen (free) → OpenRouter `:free` models → Custom (BYOK). Circuit breaker trips after 3 failures, resets after 60s.
 
 ### Build targets
 
-- **Frontend**: Vite + React builds to `dist/`. Path alias `@` → `src/`.
+- **Frontend**: Vite + React 19 builds to `dist/`. Path alias `@` → `src/`.
 - **CLI**: tsup bundles `src/cli/index.ts` to `dist-cli/` as ESM with Node 18 target.
-- **Dev proxy**: Vite proxies `/api` requests to `localhost:4080` with WebSocket upgrade support.
+- **Dev proxy**: Vite proxies `/ws`, `/api`, `/auth`, `/health` to `localhost:4080`.
+
+### Responsive CSS
+
+`src/index.css` includes Kanna's full stylesheet plus responsive enhancements:
+- Mobile (<768px): touch targets, full-width dialogs, compact prose
+- Tablet (768-1023px): narrower sidebar, panel min-widths
+- Desktop (1024px+): full layout
+- Ultra-wide (1440px+, 2560px+): wider prose columns
+- Safe area insets, PWA standalone mode, reduced motion
 
 ## Key patterns
 
@@ -79,18 +99,19 @@ All `/api/rpc` POST requests forward to the bridge. When `Accept: text/event-str
 - No `process.cwd()` in browser code — React components run client-side only
 - Dynamic `import()` in server routes breaks after tsup bundling — use static imports
 - Check `res.headersSent` before setting status codes in streaming error handlers
-- Zustand stores use `getState()` for cross-store reads (e.g., chat store reads sessions store)
+- Kanna test files use `bun:test` — excluded from tsconfig and vitest config
+- Kanna's WebSocket expects envelopes with `v: 1` version field
 
 ## Test suite
 
-67 tests across 5 files:
+63 tests across 5 files:
 - `tests/auth.test.ts` — Session creation, token validation, cookie parsing
 - `tests/circuit-breaker.test.ts` — State machine, failover, reset behavior
 - `tests/proxy.test.ts` — Protocol translation (Responses ↔ Chat Completions)
 - `tests/server-api.test.ts` — API contract validation (RPC envelope, SSE, rate limiting)
-- `tests/stores.test.ts` — Zustand store behavior (notifications, streaming, state merging)
+- `tests/stores.test.ts` — Kanna Zustand store behavior (appSettings, chatInput, chatSoundPreferences, terminalPreferences, diffCommit)
 
 ## Reference projects
 
-- [Kanna](https://github.com/jakemor/kanna) — Frontend architecture reference (React 19 + Zustand 5, WebSocket subscriptions, event-sourced state)
+- [Kanna](https://github.com/jakemor/kanna) — Frontend source (React 19 + Zustand 5, used verbatim)
 - [OpenCode](https://github.com/sst/opencode) — Backend SDK (`@opencode-ai/sdk`, Zen API)

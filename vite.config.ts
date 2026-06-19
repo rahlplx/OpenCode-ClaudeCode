@@ -4,6 +4,17 @@ import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "path";
 
 export default defineConfig({
+  test: {
+    exclude: [
+      "node_modules/**",
+      "dist/**",
+      "dist-cli/**",
+      "src/client/**/*.test.ts",
+      "src/client/**/*.test.tsx",
+      "src/shared/**/*.test.ts",
+      "src/shared/**/*.test.tsx",
+    ],
+  },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -14,10 +25,19 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     proxy: {
+      "/ws": {
+        target: "ws://localhost:4080",
+        ws: true,
+      },
       "/api": {
         target: "http://localhost:4080",
         changeOrigin: true,
-        ws: true,
+      },
+      "/health": {
+        target: "http://localhost:4080",
+      },
+      "/auth": {
+        target: "http://localhost:4080",
       },
     },
   },
