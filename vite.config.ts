@@ -44,6 +44,19 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: false,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          xterm: ["@xterm/xterm", "@xterm/addon-fit", "@xterm/addon-serialize", "@xterm/addon-web-links"],
+          vendor: ["react", "react-dom", "react-router-dom", "zustand"],
+          markdown: ["react-markdown", "remark-gfm"],
+          icons: ["lucide-react"],
+          diff: ["@pierre/diffs"],
+          list: ["@legendapp/list"],
+        },
+      },
+    },
   },
   define: {
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "0.1.0"),
