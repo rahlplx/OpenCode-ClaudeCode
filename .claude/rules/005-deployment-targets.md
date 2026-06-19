@@ -27,4 +27,4 @@ Current status and recommended approach for each platform:
 - Same Capacitor path as Android once PWA is proven
 
 ## Pattern
-Serve the static SPA from any origin; the bridge URL is configurable at runtime via env var `VITE_API_BASE` or query param `?server=https://...`. This decouples the UI package from the server and enables one APK/EXE that connects to any self-hosted or cloud instance.
+Serve the static SPA from any origin; the default bridge URL is set at build-time via env var `VITE_API_BASE` (Vite replaces it statically — not available at runtime in the browser). Runtime overrides are handled via query param `?server=https://...` read from `window.location.search`. This decouples the UI package from the server and enables one APK/EXE that connects to any self-hosted or cloud instance.
