@@ -27,6 +27,70 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
   const server = createServer(app);
   const wss = new WebSocketServer({ server, path: "/api/ws" });
 
+  // Security headers
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    if (!noPassword) {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:; font-src 'self'",
+    );
+    next();
+  });
+
+  // CORS
+  const allowedOrigins = new Set([
+    `http://localhost:${port}`,
+    `http://127.0.0.1:${port}`,
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+  ]);
+
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.has(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+    if (req.method === "OPTIONS") {
+      res.status(204).end();
+      return;
+    }
+    next();
+  });
+
+  // Rate limiting (per-IP, sliding window)
+  const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  const RATE_LIMIT_WINDOW_MS = 60_000;
+  const RATE_LIMIT_MAX = 100;
+
+  app.use("/api", (req, res, next) => {
+    if (req.path === "/health") {
+      next();
+      return;
+    }
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    let entry = rateLimitMap.get(ip);
+    if (!entry || now > entry.resetAt) {
+      entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+      rateLimitMap.set(ip, entry);
+    }
+    entry.count++;
+    if (entry.count > RATE_LIMIT_MAX) {
+      res.status(429).json({ error: "Rate limit exceeded" });
+      return;
+    }
+    next();
+  });
+
   const bridge = new OpenCodeBridge();
   const clientsByUser = new Map<string, Set<WebSocket>>();
   const sessionOwnership = new Map<string, string>();
@@ -77,7 +141,7 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
     });
   });
 
-  app.use(express.json({ limit: "10mb" }));
+  app.use(express.json({ limit: "32kb" }));
 
   app.post("/api/auth/login", (req, res) => {
     handleLogin(req, res, password);
