@@ -11,6 +11,7 @@ import { isClientEnvelope } from "../shared/protocol.js";
 import { parseCookies, getUserIdFromToken, COOKIE_NAME } from "./auth.js";
 import { ProviderConfigManager } from "./provider-config.js";
 import { ChatSessionManager } from "./chat-session-manager.js";
+import { circuitBreaker } from "./proxy.js";
 
 interface SubscriptionState {
   id: string;
@@ -378,62 +379,57 @@ async function handleChatRequest(
 ): Promise<void> {
   const activeConfig = providerConfigManager.getActiveConfig();
   const chain = providerConfigManager.getFailoverChain();
-  const proxyEntry = providerConfigManager.getProxyEntry(chain[0]);
-
-  if (!proxyEntry) {
-    chatSessionManager.addAssistantText(chatId, "No provider available. Configure a provider in Settings → LLM Provider.");
-    chatSessionManager.completeChat(chatId, 0);
-    broadcastChatSnapshot(client, chatId);
-    return;
-  }
-
   const startTime = Date.now();
 
-  try {
-    const chatMessages = [
-      { role: "user" as const, content },
-    ];
+  const requestBody = {
+    model: model || activeConfig.model,
+    messages: [{ role: "user" as const, content }],
+    stream: false,
+  };
 
-    const requestBody = {
-      model: model || activeConfig.model,
-      messages: chatMessages,
-      stream: false,
-    };
+  for (const providerKey of chain) {
+    if (!circuitBreaker.isAvailable(providerKey)) continue;
 
-    const headers = proxyEntry.buildHeaders(proxyEntry.apiKey);
-    const url = proxyEntry.chatUrl;
+    const proxyEntry = providerConfigManager.getProxyEntry(providerKey);
+    if (!proxyEntry || !proxyEntry.apiKey) continue;
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(120_000),
-    });
+    try {
+      const res = await fetch(proxyEntry.chatUrl, {
+        method: "POST",
+        headers: proxyEntry.buildHeaders(proxyEntry.apiKey),
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(120_000),
+      });
 
-    if (!res.ok) {
-      const errorText = `Provider returned ${res.status}`;
-      chatSessionManager.addAssistantText(chatId, errorText);
+      if (!res.ok) {
+        if (res.status === 429 || res.status >= 500) {
+          circuitBreaker.recordFailure(providerKey);
+          continue;
+        }
+        chatSessionManager.addAssistantText(chatId, `Provider returned ${res.status}`);
+        chatSessionManager.completeChat(chatId, Date.now() - startTime);
+        broadcastChatSnapshot(client, chatId);
+        return;
+      }
+
+      circuitBreaker.recordSuccess(providerKey);
+      const json = await res.json() as Record<string, unknown>;
+      const choices = (json.choices as Array<Record<string, unknown>>) || [];
+      const message = choices[0]?.message as Record<string, unknown> | undefined;
+      const responseText = (message?.content as string) || "No response from provider.";
+
+      chatSessionManager.addAssistantText(chatId, responseText);
       chatSessionManager.completeChat(chatId, Date.now() - startTime);
       broadcastChatSnapshot(client, chatId);
       return;
+    } catch {
+      circuitBreaker.recordFailure(providerKey);
     }
-
-    const json = await res.json() as Record<string, unknown>;
-    const choices = (json.choices as Array<Record<string, unknown>>) || [];
-    const firstChoice = choices[0];
-    const message = firstChoice?.message as Record<string, unknown> | undefined;
-    const responseText = (message?.content as string) || "No response from provider.";
-
-    chatSessionManager.addAssistantText(chatId, responseText);
-    chatSessionManager.completeChat(chatId, Date.now() - startTime);
-    broadcastChatSnapshot(client, chatId);
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : "Unknown error";
-    console.error("Chat request failed:", errorMsg);
-    chatSessionManager.addAssistantText(chatId, `Error: ${errorMsg}`);
-    chatSessionManager.completeChat(chatId, Date.now() - startTime);
-    broadcastChatSnapshot(client, chatId);
   }
+
+  chatSessionManager.addAssistantText(chatId, "No provider available. Configure a provider in Settings → LLM Provider.");
+  chatSessionManager.completeChat(chatId, 0);
+  broadcastChatSnapshot(client, chatId);
 }
 
 export function handleKannaConnection(ws: WebSocket, req: IncomingMessage, noPassword: boolean): void {
