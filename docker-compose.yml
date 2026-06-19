@@ -16,3 +16,7 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+
+# Uncomment if you enable the volumes block above:
+# volumes:
+#   opencode-data:

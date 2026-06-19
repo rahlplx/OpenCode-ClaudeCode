@@ -17,12 +17,14 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { pathname } = new URL(event.request.url);
 
-  // Never intercept API, auth, or WebSocket upgrade requests
+  // Never intercept API, auth, health, or WebSocket upgrade requests
   if (
     pathname === "/api" ||
     pathname.startsWith("/api/") ||
     pathname === "/auth" ||
     pathname.startsWith("/auth/") ||
+    pathname === "/health" ||
+    pathname.startsWith("/health/") ||
     pathname.startsWith("/ws")
   ) {
     return;
@@ -44,18 +46,23 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static assets: cache-first, populate on miss
+  // Static assets: stale-while-revalidate so non-hashed files (manifest, icons) update in background
   event.respondWith(
-    caches.match(event.request).then(
-      (cached) =>
-        cached ||
-        fetch(event.request).then((res) => {
-          if (res.ok && event.request.method === "GET") {
-            const clone = res.clone();
-            caches.open(CACHE).then((c) => c.put(event.request, clone));
-          }
-          return res;
-        }),
-    ),
+    caches.match(event.request).then((cached) => {
+      const networkFetch = fetch(event.request).then((res) => {
+        if (res.ok && event.request.method === "GET") {
+          const clone = res.clone();
+          caches.open(CACHE).then((c) => c.put(event.request, clone));
+        }
+        return res;
+      });
+
+      if (cached) {
+        networkFetch.catch(() => {});
+        return cached;
+      }
+
+      return networkFetch;
+    }),
   );
 });
