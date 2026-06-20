@@ -277,7 +277,7 @@ function handleCommand(client: KannaClient, id: string, command: ClientCommand):
       chatSessionManager.addUserMessage(targetChatId, command.content, provider, model);
       sendEnvelope(client.ws, { v: 1, type: "ack", id });
       broadcastChatSnapshot(client, targetChatId);
-      handleChatRequest(client, targetChatId, command.content, provider, model);
+      void handleChatRequest(client, targetChatId, command.content, provider, model);
       break;
     }
     case "chat.cancel": {

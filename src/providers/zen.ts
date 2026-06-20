@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 
 const ZEN_PUBLIC_TOKEN = "zen-public-fallback";
 const ZEN_BASE_URL = process.env.ZEN_BASE_URL || "https://opencode.ai/zen/v1";
+export const ZEN_DEFAULT_MODEL = "anthropic/claude-sonnet-4-6";
 
 function generateId(prefix: string): string {
   const alphabet =

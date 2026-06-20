@@ -1,5 +1,5 @@
 import type { ProviderType } from "../types/index.js";
-import { getZenConfig, buildZenHeaders } from "../providers/zen.js";
+import { getZenConfig, buildZenHeaders, ZEN_DEFAULT_MODEL } from "../providers/zen.js";
 import { getOpenRouterConfig } from "../providers/openrouter.js";
 
 type LlmProviderKind = "openai" | "openrouter" | "custom";
@@ -91,7 +91,7 @@ export class ProviderConfigManager {
           provider: "zen",
           apiKey: zen.apiKey!,
           baseUrl: zen.baseUrl,
-          model: "anthropic/claude-sonnet-4-6",
+          model: ZEN_DEFAULT_MODEL,
           enabled: true,
         };
       }
@@ -101,7 +101,7 @@ export class ProviderConfigManager {
           provider: "openrouter",
           apiKey: this.customApiKey || or.apiKey || "",
           baseUrl: or.baseUrl,
-          model: this.customModel || "anthropic/claude-sonnet-4-6",
+          model: this.customModel || ZEN_DEFAULT_MODEL,
           enabled: true,
         };
       }
