@@ -259,6 +259,33 @@ async function stepProjectCreateWs(page: Page): Promise<StepResult> {
   });
 }
 
+async function stepMobileViewport(ctx: BrowserContext): Promise<StepResult> {
+  let mobilePage: Page | undefined;
+  const t0 = Date.now();
+  try {
+    mobilePage = await ctx.newPage();
+    await mobilePage.setViewportSize({ width: 375, height: 667 });
+    await mobilePage.goto(BASE_URL, { waitUntil: "networkidle", timeout: 15_000 });
+    await mobilePage.waitForSelector("#root > *", { timeout: 8_000 });
+
+    // Check no horizontal overflow — scrollWidth must equal clientWidth
+    const hasOverflow = await mobilePage.evaluate(() =>
+      document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    const screenshot = await shot(mobilePage, "mobile-375");
+    if (hasOverflow) {
+      return { name: "Mobile viewport: no horizontal overflow", passed: false, duration: Date.now() - t0, errors: ["Horizontal overflow detected at 375px width (content wider than viewport)"], screenshot };
+    }
+    return { name: "Mobile viewport: no horizontal overflow", passed: true, duration: Date.now() - t0, errors: [], screenshot };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const screenshot = mobilePage ? await shot(mobilePage, "FAIL-mobile") : undefined;
+    return { name: "Mobile viewport: no horizontal overflow", passed: false, duration: Date.now() - t0, errors: [msg], screenshot };
+  } finally {
+    await mobilePage?.close();
+  }
+}
+
 async function stepNoApiFailures(_page: Page): Promise<StepResult> {
   const apiFailures = failedReqs.filter(r =>
     (r.url.includes("/api/") || r.url.includes("/auth/") || r.url.includes("/ws")) &&
@@ -318,7 +345,10 @@ async function main(): Promise<void> {
     // ── Step 9: project.create command ──────────────────────────────────────
     steps.push(await stepProjectCreateWs(page));
 
-    // ── Step 10: No API failures ─────────────────────────────────────────────
+    // ── Step 10: Mobile viewport (375px) ────────────────────────────────────
+    steps.push(await stepMobileViewport(ctx));
+
+    // ── Step 11: No API failures ─────────────────────────────────────────────
     steps.push(await stepNoApiFailures(page));
 
   } finally {

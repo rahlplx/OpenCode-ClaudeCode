@@ -69,6 +69,7 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
     `http://127.0.0.1:${port}`,
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "capacitor://localhost", // Capacitor Android WebView origin
   ]);
 
   app.use((req, res, next) => {

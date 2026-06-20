@@ -28,3 +28,5 @@
 - Settings sections: `/settings/providers` for LLM provider UI, `/settings/general` for general, `/settings/changelog` for releases — relevant for smoke test selectors and navigation
 - Login cookie (`auth.ts:84`) intentionally omits `Secure` flag to support plain-HTTP self-hosted deployments; `HttpOnly; SameSite=Strict` still present
 - `handleChatRequest` is fire-and-forget (called without `await`) — errors are caught internally and written to chat transcript, so unhandled rejections don't escape; mark with `void handleChatRequest(...)` to make intent explicit
+- Capacitor Android WebView origin is `capacitor://localhost` — must be in `allowedOrigins` in `src/server/index.ts` or all API/WS requests from the APK will be CORS-rejected
+- Smoke step 10 checks mobile viewport (375×667) for horizontal overflow — catches responsive CSS regressions that would break APK WebView layout before they ship
