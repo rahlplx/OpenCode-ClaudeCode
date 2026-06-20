@@ -21,3 +21,12 @@
 - Capacitor splash screen: `AppTheme.NoActionBarLaunch` must use `parent="Theme.SplashScreen"` with `windowSplashScreenBackground` / `windowSplashScreenAnimatedIcon` / `postSplashScreenTheme` — `@drawable/splash` reference causes build crash
 - Capacitor template instrumented test has wrong package `com.getcapacitor.app` — update to actual `applicationId` after `cap add android`
 - Android Play Store requires `targetSdkVersion ≥ 35` (as of Aug 2025) — Capacitor 6 scaffolds 34; bump `variables.gradle` before submitting to Play Store
+- Kanna WebSocket `subscribe` envelope: `{ v: 1, type: "subscribe", id: "<uuid>", topic: { type: "local-projects" } }` — `topic` is always an object (not a string), `id` is required; missing either causes `isClientEnvelope()` to silently drop the message
+- `path.basename()` not `str.split("/").pop()` for cross-platform directory name extraction — Windows paths use `\` separators
+- Always validate WS command payloads before trusting field types: `if (typeof cmd.localPath !== "string")` → send error envelope and break, otherwise `resolveTilde()` throws `TypeError` crashing the process
+- CSP `connect-src` lives at `src/server/index.ts:61` — add external API domains there when new third-party fetches are introduced (e.g., `https://api.github.com` for changelog)
+- Settings sections: `/settings/providers` for LLM provider UI, `/settings/general` for general, `/settings/changelog` for releases — relevant for smoke test selectors and navigation
+- Login cookie (`auth.ts:84`) intentionally omits `Secure` flag to support plain-HTTP self-hosted deployments; `HttpOnly; SameSite=Strict` still present
+- `handleChatRequest` is fire-and-forget (called without `await`) — errors are caught internally and written to chat transcript, so unhandled rejections don't escape; mark with `void handleChatRequest(...)` to make intent explicit
+- Capacitor Android WebView origin is `capacitor://localhost` — must be in `allowedOrigins` in `src/server/index.ts` or all API/WS requests from the APK will be CORS-rejected
+- Smoke step 10 checks mobile viewport (375×667) for horizontal overflow — catches responsive CSS regressions that would break APK WebView layout before they ship

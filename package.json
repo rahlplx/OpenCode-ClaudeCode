@@ -26,7 +26,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "smoke": "tsx scripts/smoke-test.ts",
+    "smoke:json": "tsx scripts/smoke-test.ts --json",
+    "playwright:install": "playwright install chromium --with-deps"
   },
   "dependencies": {
     "@legendapp/list": "3.0.0-beta.44",
@@ -88,7 +91,8 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
-      "electron"
+      "electron",
+      "playwright"
     ]
   },
   "devDependencies": {
@@ -127,6 +131,8 @@
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.61.1",
     "vite": "^6.1.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "playwright": "^1.49.0",
+    "tsx": "^4.19.0"
   }
 }

@@ -1,5 +1,5 @@
 import type { ProviderType } from "../types/index.js";
-import { getZenConfig, buildZenHeaders } from "../providers/zen.js";
+import { getZenConfig, buildZenHeaders, ZEN_DEFAULT_MODEL } from "../providers/zen.js";
 import { getOpenRouterConfig } from "../providers/openrouter.js";
 
 type LlmProviderKind = "openai" | "openrouter" | "custom";
@@ -72,6 +72,7 @@ const KANNA_TO_SERVER: Record<LlmProviderKind, ProviderType> = {
 
 export class ProviderConfigManager {
   private currentProvider: LlmProviderKind = "openai";
+  private zenApiKey = "";
   private customApiKey = "";
   private customModel = "";
   private customBaseUrl = "";
@@ -85,12 +86,12 @@ export class ProviderConfigManager {
 
     switch (serverProvider) {
       case "zen": {
-        const zen = getZenConfig();
+        const zen = getZenConfig(this.zenApiKey || undefined);
         return {
           provider: "zen",
           apiKey: zen.apiKey!,
           baseUrl: zen.baseUrl,
-          model: "anthropic/claude-sonnet-4-6",
+          model: ZEN_DEFAULT_MODEL,
           enabled: true,
         };
       }
@@ -100,7 +101,7 @@ export class ProviderConfigManager {
           provider: "openrouter",
           apiKey: this.customApiKey || or.apiKey || "",
           baseUrl: or.baseUrl,
-          model: this.customModel || "anthropic/claude-sonnet-4-6",
+          model: this.customModel || ZEN_DEFAULT_MODEL,
           enabled: true,
         };
       }
@@ -117,6 +118,7 @@ export class ProviderConfigManager {
 
   getSnapshot(): LlmProviderSnapshot {
     const active = this.getActiveConfig();
+    const isZen = this.mapKannaProvider(this.currentProvider) === "zen";
     return {
       provider: this.currentProvider,
       apiKey: "",
@@ -124,14 +126,20 @@ export class ProviderConfigManager {
       baseUrl: this.currentProvider === "custom" ? this.customBaseUrl : "",
       resolvedBaseUrl: active.baseUrl,
       enabled: active.enabled,
-      warning: null,
+      warning: isZen && !this.zenApiKey
+        ? "No Zen API key set — using the public shared token. Get a key at opencode.ai."
+        : null,
       filePathDisplay: "~/.opencode/llm-provider.json",
     };
   }
 
   writeLlmProvider(config: LlmProviderWrite): LlmProviderSnapshot {
     this.currentProvider = config.provider;
-    this.customApiKey = config.apiKey;
+    if (this.mapKannaProvider(config.provider) === "zen") {
+      this.zenApiKey = config.apiKey;
+    } else {
+      this.customApiKey = config.apiKey;
+    }
     this.customModel = config.model;
     this.customBaseUrl = config.baseUrl;
 
@@ -142,7 +150,7 @@ export class ProviderConfigManager {
     const serverProvider = this.mapKannaProvider(config.provider);
 
     if (serverProvider === "zen") {
-      return { ok: true, error: null };
+      return { ok: true, error: null }; // public token fallback works even without a key
     }
 
     if (serverProvider === "openrouter") {
@@ -172,7 +180,7 @@ export class ProviderConfigManager {
   getProxyEntry(providerType: ProviderType): ProxyEntry | null {
     switch (providerType) {
       case "zen": {
-        const zen = getZenConfig();
+        const zen = getZenConfig(this.zenApiKey || undefined);
         return {
           responsesUrl: `${zen.baseUrl}/responses`,
           chatUrl: `${zen.baseUrl}/chat/completions`,

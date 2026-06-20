@@ -58,7 +58,7 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
     }
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:; font-src 'self'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: https://api.github.com; img-src 'self' data:; font-src 'self'",
     );
     next();
   });
@@ -69,6 +69,7 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
     `http://127.0.0.1:${port}`,
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "capacitor://localhost", // Capacitor Android WebView origin
   ]);
 
   app.use((req, res, next) => {

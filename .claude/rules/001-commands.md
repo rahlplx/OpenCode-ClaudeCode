@@ -10,6 +10,9 @@ pnpm typecheck            # tsc --noEmit
 pnpm lint                 # eslint src/server + src/cli (flat config, Kanna verbatim excluded)
 pnpm test                 # vitest run (all tests)
 pnpm test:watch           # vitest in watch mode
+pnpm smoke                # Playwright smoke test: 9 steps, headless Chromium, screenshots → smoke-results/
+pnpm smoke --json         # machine-readable JSON report for AI diagnosis loop
+pnpm playwright:install   # one-time: download Chromium (~300MB) for smoke tests
 
 # Electron (Windows EXE / Mac DMG / Linux AppImage)
 pnpm electron:dev         # build + launch Electron window locally
