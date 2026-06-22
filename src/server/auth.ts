@@ -12,6 +12,15 @@ interface SessionEntry {
 
 const activeSessions = new Map<string, SessionEntry>();
 
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, session] of activeSessions) {
+    if (now - session.createdAt > SESSION_TTL) {
+      activeSessions.delete(token);
+    }
+  }
+}, 60 * 60 * 1000);
+
 export function generatePassword(): string {
   return randomBytes(16).toString("hex");
 }
@@ -99,7 +108,16 @@ export function handleLogin(
   }
 
   let body = "";
+  let bodySize = 0;
+  const MAX_LOGIN_BODY = 4096;
   req.on("data", (chunk: Buffer) => {
+    bodySize += chunk.length;
+    if (bodySize > MAX_LOGIN_BODY) {
+      res.writeHead(413, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Request too large" }));
+      req.destroy();
+      return;
+    }
     body += chunk.toString();
   });
   req.on("end", () => {
