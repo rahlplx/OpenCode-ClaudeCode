@@ -357,7 +357,7 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
 
       res.json({ models });
     } catch (err) {
-      console.error("Models fetch error:", err instanceof Error ? err.message : String(err));
+      console.error("Models fetch error:", err);
       res.status(500).json({ error: "Failed to fetch models" });
     }
   });
@@ -397,7 +397,7 @@ export async function startServer(options: ServerOptions = {}): Promise<void> {
       await bridge.respondToRequest(requestId, approved);
       res.json({ success: true });
     } catch (err) {
-      console.error("Server request error:", err instanceof Error ? err.message : String(err));
+      console.error("Server request error:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });

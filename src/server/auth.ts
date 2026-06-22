@@ -19,7 +19,7 @@ setInterval(() => {
       activeSessions.delete(token);
     }
   }
-}, 60 * 60 * 1000);
+}, 60 * 60 * 1000).unref();
 
 export function generatePassword(): string {
   return randomBytes(16).toString("hex");
@@ -109,10 +109,13 @@ export function handleLogin(
 
   let body = "";
   let bodySize = 0;
+  let limitExceeded = false;
   const MAX_LOGIN_BODY = 4096;
   req.on("data", (chunk: Buffer) => {
+    if (limitExceeded) return;
     bodySize += chunk.length;
     if (bodySize > MAX_LOGIN_BODY) {
+      limitExceeded = true;
       res.writeHead(413, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Request too large" }));
       req.destroy();
@@ -121,6 +124,7 @@ export function handleLogin(
     body += chunk.toString();
   });
   req.on("end", () => {
+    if (limitExceeded) return;
     try {
       const { password: submitted } = JSON.parse(body) as {
         password: string;
